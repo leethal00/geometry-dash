@@ -164,4 +164,190 @@ describe('Game', () => {
       expect(game.input).toBeDefined();
     });
   });
+
+  describe('fixedUpdate state transitions via input', () => {
+    let rafCallback: ((time: number) => void) | null;
+    let baseTime: number;
+
+    beforeEach(() => {
+      rafCallback = null;
+      baseTime = performance.now();
+      vi.spyOn(window, 'requestAnimationFrame').mockImplementation((cb) => {
+        rafCallback = cb;
+        return 1;
+      });
+    });
+
+    it('should transition from Menu to Playing on action press', () => {
+      game.start();
+      // Simulate space press then advance a frame with enough delta for a tick
+      document.dispatchEvent(new KeyboardEvent('keydown', { code: 'Space' }));
+      if (rafCallback) rafCallback(baseTime + 20);
+      expect(game.stateMachine.state).toBe(GameState.Playing);
+    });
+
+    it('should transition from Playing to Paused on pause press', () => {
+      game.stateMachine.transition(GameState.Playing);
+      game.start();
+      document.dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape' }));
+      if (rafCallback) rafCallback(baseTime + 20);
+      expect(game.stateMachine.state).toBe(GameState.Paused);
+    });
+
+    it('should transition from Paused to Playing on pause press', () => {
+      game.stateMachine.transition(GameState.Playing);
+      game.stateMachine.transition(GameState.Paused);
+      game.start();
+      document.dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape' }));
+      if (rafCallback) rafCallback(baseTime + 20);
+      expect(game.stateMachine.state).toBe(GameState.Playing);
+    });
+
+    it('should transition from Dead to Playing on action press', () => {
+      game.stateMachine.transition(GameState.Playing);
+      game.stateMachine.transition(GameState.Dead);
+      game.start();
+      document.dispatchEvent(new KeyboardEvent('keydown', { code: 'Space' }));
+      if (rafCallback) rafCallback(baseTime + 20);
+      expect(game.stateMachine.state).toBe(GameState.Playing);
+    });
+  });
+
+  describe('game loop mechanics', () => {
+    let rafCallback: ((time: number) => void) | null;
+    let mockTime: number;
+
+    beforeEach(() => {
+      rafCallback = null;
+      mockTime = 1000; // Start at 1000ms to avoid edge cases
+      vi.spyOn(performance, 'now').mockReturnValue(mockTime);
+      vi.spyOn(window, 'requestAnimationFrame').mockImplementation((cb) => {
+        rafCallback = cb;
+        return 1;
+      });
+    });
+
+    it('should clamp large deltas to MAX_DELTA', () => {
+      game.start();
+      // Advance by 2 seconds — way beyond MAX_DELTA (0.25s)
+      // With MAX_DELTA = 0.25 and FIXED_TIMESTEP = 1/60, max ticks = floor(0.25 / (1/60)) = 15
+      if (rafCallback) rafCallback(mockTime + 2000);
+      expect(game.tickCount).toBeLessThanOrEqual(15);
+      expect(game.tickCount).toBeGreaterThan(0);
+    });
+
+    it('should accumulate ticks proportional to elapsed time', () => {
+      game.start();
+      // Advance by 100ms = 6 ticks at 60fps (100 / 16.667 = 5.99, floor = 5... but accumulator carries)
+      // Actually: delta=0.1s, accumulator=0.1, 0.1 / (1/60) = 6 ticks exactly
+      if (rafCallback) rafCallback(mockTime + 100);
+      expect(game.tickCount).toBe(6);
+    });
+
+    it('should not tick when delta is less than one timestep', () => {
+      game.start();
+      // Advance by 5ms = 0.3 timesteps (1 timestep = ~16.67ms)
+      if (rafCallback) rafCallback(mockTime + 5);
+      expect(game.tickCount).toBe(0);
+    });
+
+    it('should stop looping when not running', () => {
+      const rafSpy = vi.spyOn(window, 'requestAnimationFrame').mockReturnValue(1);
+      game.start();
+      game.stop();
+      const callCount = rafSpy.mock.calls.length;
+      // After stop, calling the loop callback should not schedule another frame
+      if (rafCallback) rafCallback(mockTime + 100);
+      expect(rafSpy.mock.calls.length).toBe(callCount);
+    });
+
+    it('should track FPS over one second', () => {
+      let rafCallCount = 0;
+      vi.spyOn(window, 'requestAnimationFrame').mockImplementation((cb) => {
+        rafCallCount++;
+        rafCallback = cb;
+        return 1;
+      });
+
+      game.start();
+      expect(game.fps).toBe(0);
+
+      // Simulate many frames at 16ms intervals to cross the 1-second boundary
+      for (let i = 1; i <= 70; i++) {
+        if (rafCallback) rafCallback(mockTime + i * 16);
+      }
+
+      // 70 frames at 16ms = 1120ms total, should have crossed 1s boundary
+      expect(rafCallCount).toBeGreaterThan(60);
+      expect(game.fps).toBeGreaterThan(0);
+    });
+  });
+
+  describe('stop edge cases', () => {
+    it('should handle stop when not started', () => {
+      expect(() => game.stop()).not.toThrow();
+      expect(game.running).toBe(false);
+    });
+
+    it('should handle multiple stop calls', () => {
+      vi.spyOn(window, 'requestAnimationFrame').mockReturnValue(1);
+      game.start();
+      game.stop();
+      expect(() => game.stop()).not.toThrow();
+    });
+  });
+
+  describe('render dispatching', () => {
+    let rafCallback: ((time: number) => void) | null;
+    let baseTime: number;
+
+    beforeEach(() => {
+      rafCallback = null;
+      baseTime = performance.now();
+      vi.spyOn(window, 'requestAnimationFrame').mockImplementation((cb) => {
+        rafCallback = cb;
+        return 1;
+      });
+    });
+
+    it('should call clearRect on each render', () => {
+      game.start();
+      if (rafCallback) rafCallback(baseTime + 20);
+      expect(game.ctx.clearRect).toHaveBeenCalled();
+    });
+
+    it('should render menu text in Menu state', () => {
+      game.start();
+      if (rafCallback) rafCallback(baseTime + 20);
+      expect(game.ctx.fillText).toHaveBeenCalledWith(
+        'Geometry Dash',
+        expect.any(Number),
+        expect.any(Number),
+      );
+    });
+
+    it('should render pause overlay in Paused state', () => {
+      game.stateMachine.transition(GameState.Playing);
+      game.stateMachine.transition(GameState.Paused);
+      game.start();
+      if (rafCallback) rafCallback(baseTime + 20);
+      expect(game.ctx.fillText).toHaveBeenCalledWith(
+        'PAUSED',
+        expect.any(Number),
+        expect.any(Number),
+      );
+    });
+
+    it('should render dead overlay in Dead state', () => {
+      game.stateMachine.transition(GameState.Playing);
+      game.stateMachine.transition(GameState.Dead);
+      game.start();
+      if (rafCallback) rafCallback(baseTime + 20);
+      expect(game.ctx.fillText).toHaveBeenCalledWith(
+        'DEAD',
+        expect.any(Number),
+        expect.any(Number),
+      );
+    });
+  });
 });

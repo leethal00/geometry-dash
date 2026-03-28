@@ -97,5 +97,58 @@ describe('Camera', () => {
       camera.update();
       expect(camera.renderOffsetX).toBe(-10 * CONFIG.UNIT_SIZE);
     });
+
+    it('should return zero renderOffsetX when camera at origin with no shake', () => {
+      camera.update();
+      expect(camera.renderOffsetX).toBe(0);
+      expect(camera.renderOffsetY).toBe(0);
+    });
+
+    it('should incorporate shake into renderOffsetX', () => {
+      camera.x = 5;
+      camera.shake(100);
+      camera.update();
+      // renderOffsetX = -5 * UNIT_SIZE + shakeOffset
+      // shakeOffset is random but non-zero with high intensity
+      expect(camera.renderOffsetX).not.toBe(-5 * CONFIG.UNIT_SIZE);
+    });
+  });
+
+  describe('default constructor', () => {
+    it('should use CONFIG defaults when no args provided', () => {
+      const defaultCamera = new Camera();
+      expect(defaultCamera.width).toBe(CONFIG.CANVAS_WIDTH);
+      expect(defaultCamera.height).toBe(CONFIG.CANVAS_HEIGHT);
+    });
+  });
+
+  describe('shake decay rate', () => {
+    it('should decay shake intensity by 0.9 each update', () => {
+      camera.shake(10);
+      camera.update();
+      expect(camera.shakeIntensity).toBeCloseTo(9, 1);
+      camera.update();
+      expect(camera.shakeIntensity).toBeCloseTo(8.1, 1);
+    });
+
+    it('should snap to zero when shake falls below threshold', () => {
+      camera.shake(0.005);
+      camera.update();
+      expect(camera.shakeIntensity).toBe(0);
+    });
+  });
+
+  describe('follow edge cases', () => {
+    it('should handle negative target coordinates', () => {
+      camera.follow(-10, -5);
+      expect(camera.x).toBe(-10 - camera.width / (CONFIG.UNIT_SIZE * 4));
+      expect(camera.y).toBe(-5);
+    });
+
+    it('should handle zero target', () => {
+      camera.follow(0, 0);
+      expect(camera.x).toBe(-camera.width / (CONFIG.UNIT_SIZE * 4));
+      expect(camera.y).toBe(0);
+    });
   });
 });

@@ -176,4 +176,75 @@ describe('GameStateMachine', () => {
       expect(sm.state).toBe(GameState.Menu);
     });
   });
+
+  describe('self-transitions', () => {
+    it('should not allow Playing to Playing', () => {
+      sm.transition(GameState.Playing);
+      expect(sm.transition(GameState.Playing)).toBe(false);
+      expect(sm.state).toBe(GameState.Playing);
+    });
+
+    it('should not allow Paused to Paused', () => {
+      sm.transition(GameState.Playing);
+      sm.transition(GameState.Paused);
+      expect(sm.transition(GameState.Paused)).toBe(false);
+      expect(sm.state).toBe(GameState.Paused);
+    });
+
+    it('should not allow Dead to Dead', () => {
+      sm.transition(GameState.Playing);
+      sm.transition(GameState.Dead);
+      expect(sm.transition(GameState.Dead)).toBe(false);
+      expect(sm.state).toBe(GameState.Dead);
+    });
+  });
+
+  describe('reset does not fire listeners', () => {
+    it('should not notify listeners when reset is called', () => {
+      const callback = vi.fn();
+      sm.onTransition(callback);
+      sm.transition(GameState.Playing);
+      callback.mockClear();
+      sm.reset();
+      expect(callback).not.toHaveBeenCalled();
+      expect(sm.state).toBe(GameState.Menu);
+    });
+  });
+
+  describe('canTransitionTo completeness', () => {
+    it('should report valid transitions from Paused', () => {
+      sm.transition(GameState.Playing);
+      sm.transition(GameState.Paused);
+      expect(sm.canTransitionTo(GameState.Playing)).toBe(true);
+      expect(sm.canTransitionTo(GameState.Menu)).toBe(true);
+      expect(sm.canTransitionTo(GameState.Dead)).toBe(false);
+      expect(sm.canTransitionTo(GameState.Paused)).toBe(false);
+    });
+
+    it('should report valid transitions from Dead', () => {
+      sm.transition(GameState.Playing);
+      sm.transition(GameState.Dead);
+      expect(sm.canTransitionTo(GameState.Playing)).toBe(true);
+      expect(sm.canTransitionTo(GameState.Menu)).toBe(true);
+      expect(sm.canTransitionTo(GameState.Dead)).toBe(false);
+      expect(sm.canTransitionTo(GameState.Paused)).toBe(false);
+    });
+  });
+
+  describe('listener receives correct from/to on chained transitions', () => {
+    it('should track from state accurately across multiple transitions', () => {
+      const transitions: Array<[GameState, GameState]> = [];
+      sm.onTransition((from, to) => transitions.push([from, to]));
+
+      sm.transition(GameState.Playing);
+      sm.transition(GameState.Dead);
+      sm.transition(GameState.Playing);
+
+      expect(transitions).toEqual([
+        [GameState.Menu, GameState.Playing],
+        [GameState.Playing, GameState.Dead],
+        [GameState.Dead, GameState.Playing],
+      ]);
+    });
+  });
 });
