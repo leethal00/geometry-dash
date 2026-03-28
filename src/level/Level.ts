@@ -139,18 +139,18 @@ const FIRST_FLIGHT: LevelDefinition = {
     [148, 0],
     [165, 0],
     // First double spike
-    [190, 0], [191, 0],
+    [190, 0], [193, 0],
 
     // === Phase 3: Medium (200-300) ===
     // Double spikes, block+spike combos, medium spacing
     [220, 0],
     // Double spike
-    [235, 0], [236, 0],
+    [235, 0], [238, 0],
     [250, 0],
     // Spike after block
     [275, 0],
     // Double spike
-    [290, 0], [291, 0],
+    [290, 0], [293, 0],
 
     // === Phase 4: Hardest section (300-380) ===
     // Triple spikes max, tighter but still readable
@@ -159,7 +159,7 @@ const FIRST_FLIGHT: LevelDefinition = {
     [330, 0], [331, 0], [332, 0],
     [348, 0],
     // Double spike near the end
-    [360, 0], [361, 0],
+    [360, 0], [363, 0],
     [372, 0],
   ],
 };

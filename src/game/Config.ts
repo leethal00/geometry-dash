@@ -50,7 +50,7 @@ export const CONFIG = {
   PARTICLE_LIFETIME: 50,
 
   /** Spike hitbox inset in pixels (makes collision more forgiving) */
-  SPIKE_INSET: 6,
+  SPIKE_INSET: 11,
 
   /** Landing tolerance in pixels (how far below block top prevY can be) */
   LANDING_TOLERANCE: 4,
