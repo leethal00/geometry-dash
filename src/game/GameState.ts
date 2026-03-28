@@ -3,15 +3,17 @@ export enum GameState {
   Playing = 'playing',
   Paused = 'paused',
   Dead = 'dead',
+  Complete = 'complete',
 }
 
 export type StateTransitionCallback = (from: GameState, to: GameState) => void;
 
 const VALID_TRANSITIONS: Record<GameState, GameState[]> = {
   [GameState.Menu]: [GameState.Playing],
-  [GameState.Playing]: [GameState.Paused, GameState.Dead, GameState.Menu],
+  [GameState.Playing]: [GameState.Paused, GameState.Dead, GameState.Complete, GameState.Menu],
   [GameState.Paused]: [GameState.Playing, GameState.Menu],
   [GameState.Dead]: [GameState.Playing, GameState.Menu],
+  [GameState.Complete]: [GameState.Menu, GameState.Playing],
 };
 
 export class GameStateMachine {
@@ -37,13 +39,6 @@ export class GameStateMachine {
 
   onTransition(callback: StateTransitionCallback): void {
     this.listeners.push(callback);
-  }
-
-  removeListener(callback: StateTransitionCallback): void {
-    const index = this.listeners.indexOf(callback);
-    if (index !== -1) {
-      this.listeners.splice(index, 1);
-    }
   }
 
   canTransitionTo(to: GameState): boolean {
