@@ -106,101 +106,201 @@ export class Level {
 // ============================================================
 // "First Flight" — Beat-synced at 128 BPM, 4 blocks per beat
 //
-// Beat N lands at grid position 2 + N×4 (player starts at x=2).
-// 380 blocks ≈ 95 beats ≈ 44.5 seconds.
+// B(n) = grid position 2 + n×4.  382 blocks ≈ 95 beats ≈ 44.5s
 //
-// Phase 1 (B4-B20,  x≈18-82):   Single spikes, learn rhythm
-// Phase 2 (B25-B47, x≈102-190): Blocks, gaps, first pad
-// Phase 3 (B49-B72, x≈198-290): Doubles, orbs, walls, pad
-// Phase 4 (B73-B94, x≈294-378): Gravity flip, triple, finale
+// SECTION 1 (B0-B15):  Learn — flat ground, single spikes
+// SECTION 2 (B16-B32): Blocks — platforms, staircase, pillar, gap
+// SECTION 3 (B33-B48): Combos — spike-on-block, corridors, doubles
+// SECTION 4 (B49-B64): Platform hop — elevated, pillar pairs, gaps
+// SECTION 5 (B65-B80): Intense — 3-high wall, rapid blocks, gravity
+// SECTION 6 (B81-B95): Finale — cooldown, last challenges, finish
 // ============================================================
 
 const FIRST_FLIGHT: LevelDefinition = {
   name: 'First Flight',
-  length: 380,
+  length: 382,
 
   gaps: [
-    // Phase 2
-    [134, 136],   // 2-block gap after pad launch
-    [174, 176],   // 2-block gap
-    // Phase 3
-    [226, 228],   // 2-block gap with orb
-    [262, 264],   // 2-block gap
-    // Phase 4
-    [322, 325],   // 3-block gap (hardest) with orb
-    [354, 356],   // 2-block gap
+    // S2: first ground gap — 3 blocks
+    [106, 109],
+    // S3: platform hop gap, 3-block gap
+    [149, 151],
+    [174, 177],
+    // S4: gaps between platforming
+    [213, 215],
+    [226, 229],
+    // S5: after intense section, post-gravity
+    [262, 265],
+    [314, 317],
+    // S6: final gap
+    [354, 356],
   ],
 
   blocks: [
-    // Phase 2: single blocks on beats
-    [110, 0],     // B27
-    [158, 0],     // B39
-    // Phase 3: blocks + 2-high wall
-    [202, 0],     // B50
-    [242, 0],     // B60
-    [270, 0], [270, 1],  // B67: 2-high wall
-    // Phase 4
-    [342, 0], [342, 1],  // B85: 2-high wall
+    // =============================================
+    // SECTION 2: Blocks Intro (x≈66-130)
+    // =============================================
+
+    // 2-wide platform — jump onto, run along, jump off
+    [74, 0], [75, 0],
+
+    // Single block obstacle — jump over or onto
+    [86, 0],
+
+    // Step-up staircase: 1-high → 2-high
+    [94, 0],
+    [96, 0], [96, 1],
+
+    // 2×2 elevated platform — jump onto, spike below after
+    [114, 0], [115, 0], [114, 1], [115, 1],
+
+    // 2-high pillar — jump over
+    [122, 0], [122, 1],
+
+    // =============================================
+    // SECTION 3: Combos (x≈134-194)
+    // =============================================
+
+    // Spike-on-block: block with spike on top, jump over the 2-high
+    [134, 0],
+
+    // Platform hop: platform → gap → platform
+    [146, 0], [147, 0],
+    [152, 0], [153, 0],
+
+    // Block corridor: block—spike—block (spike elevated between)
+    [166, 0], [167, 0], [168, 0],
+
+    // Step-up: 1-high → 2-high, spike after descent
+    [182, 0],
+    [184, 0], [184, 1],
+
+    // Another spike-on-block
+    [190, 0],
+
+    // =============================================
+    // SECTION 4: Platform Hopping (x≈198-258)
+    // =============================================
+
+    // 2×2 elevated platform (launch from pad)
+    [202, 0], [203, 0], [202, 1], [203, 1],
+
+    // Block before gap
+    [210, 0],
+
+    // Pillar pair: two 2-high pillars with gap between
+    [218, 0], [218, 1],
+    [222, 0], [222, 1],
+
+    // Two spike-on-blocks in quick succession (one big jump clears both)
+    [234, 0],
+    [237, 0],
+
+    // Block-spike combo
+    [246, 0],
+
+    // =============================================
+    // SECTION 5: Intense (x≈262-322)
+    // =============================================
+
+    // 3-high wall — requires jump pad to clear!
+    [270, 0], [270, 1], [270, 2],
+
+    // Rapid block-spike-block-spike pattern
+    [278, 0],
+    [281, 0],
+
+    // =============================================
+    // SECTION 6: Finale (x≈326-378)
+    // =============================================
+
+    // Spike-on-block
+    [334, 0],
+
+    // 2-wide resting platform (brief safe spot)
+    [346, 0], [347, 0],
+
+    // 2-high pillar — final jump-over challenge
+    [362, 0], [362, 1],
   ],
 
   spikes: [
-    // === Phase 1: Single spikes on beats — learn to jump ===
-    [18, 0],      // B4
-    [30, 0],      // B7
-    [42, 0],      // B10
-    [54, 0],      // B13
-    [66, 0],      // B16
-    [82, 0],      // B20
+    // =============================================
+    // SECTION 1: Learn the Rhythm (4 single spikes)
+    // =============================================
+    [18, 0],       // B4
+    [30, 0],       // B7
+    [42, 0],       // B10
+    [54, 0],       // B13
 
-    // === Phase 2: Blocks, gaps, getting harder ===
-    [102, 0],     // B25
-    [118, 0],     // B29
-    [126, 0],     // B31
-    [142, 0],     // B35 (after gap landing)
-    [150, 0],     // B37
-    [166, 0],     // B41
-    [182, 0],     // B45
-    // Double spike on beat B47
-    [190, 0], [192.5, 0],
+    // =============================================
+    // SECTION 2: Blocks Intro
+    // =============================================
+    [66, 0],       // B16 — last easy spike
+    [77, 0],       // after 2-wide platform, must jump off over it
+    [87, 0],       // right after block [86] — jump-over combo
+    [98, 0],       // after staircase descent
+    [110, 0],      // after 3-block gap landing
+    [117, 0],      // after 2×2 platform drop-off
+    [126, 0],      // after pillar
 
-    // === Phase 3: Combos, doubles, walls ===
-    [198, 0],     // B49
-    [210, 0],     // B52
-    // Double spike B53
-    [214, 0], [216.5, 0],
-    [234, 0],     // B58
-    [246, 0],     // B61
-    // Double spike B63
-    [254, 0], [256.5, 0],
-    [274, 0],     // B68
-    [282, 0],     // B70
+    // =============================================
+    // SECTION 3: Combos
+    // =============================================
+    [134, 1],      // spike ON TOP of block — 2-high obstacle
+    [138, 0],      // standalone on beat
+    [154, 0],      // after platform hop landing
+    [158, 0], [160, 0],   // double spike with spacing
+    [167, 1],      // elevated spike in block corridor
+    [186, 0],      // after staircase descent
+    [190, 1],      // spike ON TOP of block
+    [194, 0],      // standalone on beat
 
-    // === Phase 4: Gravity, triple, finale ===
-    // Triple spike B82 — spaced with 1.5 block gaps
-    [330, 0], [332.5, 0], [335, 0],
-    [338, 0],     // B84
-    [350, 0],     // B87
-    // Double spike B90
-    [362, 0], [364.5, 0],
-    [370, 0],     // B92
-    [374, 0],     // B93 (final obstacle)
+    // =============================================
+    // SECTION 4: Platform Hopping
+    // =============================================
+    [206, 0],      // after elevated platform drop
+    [211, 0],      // after block, before gap
+    [216, 0],      // after gap landing
+    [234, 1],      // spike ON block (pair 1)
+    [237, 1],      // spike ON block (pair 2)
+    [242, 0],      // standalone
+    [247, 0],      // after block [246]
+    [254, 0], [256.5, 0],  // double spike
+
+    // =============================================
+    // SECTION 5: Intense
+    // =============================================
+    [266, 0],      // after 3-block gap
+    [279, 0],      // rapid pattern: spike after block
+    [282, 0],      // rapid pattern: spike after block
+    [286, 0],      // before gravity section
+
+    // =============================================
+    // SECTION 6: Finale
+    // =============================================
+    [330, 0],      // standalone
+    [334, 1],      // spike ON block
+    [338, 0], [340, 0],   // double spike
+    [350, 0],      // standalone
+    [358, 0],      // after gap
+    [366, 0],      // standalone
+    [374, 0],      // final spike
   ],
 
   jumpPads: [
-    [130, 0],     // Launch over gap [134,136]
-    [222, 0],     // Before gap section
-    [286, 0],     // Before gravity flip
-    [346, 0],     // Before final gap
+    [198, 0],      // S4: dramatic launch into platform section
+    [267, 0],      // S5: essential — clears the 3-high wall at 270
   ],
 
   jumpOrbs: [
-    [135, 2.5],   // Over gap [134,136]
-    [227, 2.5],   // Over gap [226,228]
-    [323, 2.5],   // Over big gap [322,325]
+    [175, 3],      // S3: safety net over 3-block gap [174,177]
+    [227, 3],      // S4: safety net over 3-block gap [226,229]
+    [315, 3],      // S5: mid-air save after gravity flip, over [314,317]
   ],
 
   gravityPortals: [
-    294,          // Flip to ceiling
-    314,          // Flip back to ground
+    290,           // flip to ceiling
+    306,           // flip back to ground
   ],
 };
