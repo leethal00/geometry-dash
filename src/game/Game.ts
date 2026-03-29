@@ -34,6 +34,9 @@ export class Game {
   private completeTimer = 0;
   private menuTime = 0;
 
+  // New object state
+  private usedOrbs = new Set<number>();
+
   constructor(canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('Failed to get 2D rendering context');
@@ -129,6 +132,7 @@ export class Game {
     this.particles.clear();
     this.progress = 0;
     this.attempts++;
+    this.usedOrbs.clear();
     this.stateMachine.transition(GameState.Playing);
   }
 
@@ -140,27 +144,40 @@ export class Game {
     const player = this.player;
     const level = this.level;
 
-    // --- Input ---
+    // --- Input: check orb first (mid-air), then normal jump ---
     if (actionPressed) {
-      player.jump();
+      let usedOrb = false;
+      if (!player.onGround) {
+        usedOrb = this.checkOrbJump();
+      }
+      if (!usedOrb) {
+        player.jump();
+      }
     }
 
     // --- Physics ---
     const wasOnGround = player.onGround;
     if (!wasOnGround) {
-      player.vy -= CONFIG.GRAVITY;
+      player.vy += player.gravityFlipped ? CONFIG.GRAVITY : -CONFIG.GRAVITY;
     }
 
     const prevY = player.y;
     player.x += CONFIG.SCROLL_SPEED;
     player.y += player.vy;
 
-    // --- Ground collision ---
+    // --- Ground collision (normal gravity) ---
     player.onGround = false;
     const centerX = player.x + S / 2;
 
-    if (level.isOverGround(centerX) && player.y <= 0 && prevY >= -2) {
+    if (!player.gravityFlipped && level.isOverGround(centerX) && player.y <= 0 && prevY >= -2) {
       player.y = 0;
+      player.vy = 0;
+      player.onGround = true;
+    }
+
+    // --- Ceiling collision (flipped gravity) ---
+    if (player.gravityFlipped && player.y >= CONFIG.CEILING_HEIGHT) {
+      player.y = CONFIG.CEILING_HEIGHT;
       player.vy = 0;
       player.onGround = true;
     }
@@ -220,8 +237,47 @@ export class Game {
       }
     }
 
+    // --- Jump pad collision ---
+    for (const pad of level.jumpPads) {
+      if (pad.x > player.x + S + 80) break;
+      if (pad.x + U < player.x - 20) continue;
+
+      const padH = U * 0.4;
+      if (
+        player.x < pad.x + U &&
+        player.x + S > pad.x &&
+        player.y < pad.y + padH &&
+        player.y + S > pad.y
+      ) {
+        player.padLaunch();
+      }
+    }
+
+    // --- Gravity portal collision ---
+    for (const portal of level.gravityPortals) {
+      const playerCenter = player.x + S / 2;
+      const prevCenter = playerCenter - CONFIG.SCROLL_SPEED;
+      if (prevCenter < portal.x && playerCenter >= portal.x) {
+        player.gravityFlipped = !player.gravityFlipped;
+        // Small velocity boost in new gravity direction to start moving
+        if (player.gravityFlipped) {
+          player.vy = CONFIG.GRAVITY * 3;
+          player.onGround = false;
+        } else {
+          player.vy = -CONFIG.GRAVITY * 3;
+          player.onGround = false;
+        }
+      }
+    }
+
     // --- Fall death ---
     if (player.y < CONFIG.FALL_DEATH_Y) {
+      this.die();
+      return;
+    }
+
+    // --- Rise death (flipped gravity, flew too high) ---
+    if (player.gravityFlipped && player.y > CONFIG.CEILING_HEIGHT + 200) {
       this.die();
       return;
     }
@@ -238,6 +294,38 @@ export class Game {
     if (this.progress >= 1) {
       this.complete();
     }
+  }
+
+  // ================================================================
+  // Jump orb check — returns true if an orb was used
+  // ================================================================
+
+  private checkOrbJump(): boolean {
+    const player = this.player;
+    const level = this.level;
+
+    for (let i = 0; i < level.jumpOrbs.length; i++) {
+      if (this.usedOrbs.has(i)) continue;
+      const orb = level.jumpOrbs[i]!;
+      if (orb.x > player.x + S + 80) break;
+      if (orb.x + U < player.x - 20) continue;
+
+      // Circle vs AABB overlap (approximate with center distance)
+      const orbCX = orb.x + U / 2;
+      const orbCY = orb.y + U / 2;
+      const playerCX = player.x + S / 2;
+      const playerCY = player.y + S / 2;
+      const dx = playerCX - orbCX;
+      const dy = playerCY - orbCY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      if (dist < U * 0.8) {
+        player.orbJump();
+        this.usedOrbs.add(i);
+        return true;
+      }
+    }
+    return false;
   }
 
   // ================================================================
@@ -300,6 +388,7 @@ export class Game {
         this.renderer.renderGameplay(
           this.camera, this.player, this.level,
           this.particles, this.progress, this.attempts,
+          this.usedOrbs,
         );
         if (state === GameState.Paused) this.renderPauseOverlay();
         break;
@@ -308,6 +397,7 @@ export class Game {
         this.renderer.renderGameplay(
           this.camera, this.player, this.level,
           this.particles, this.progress, this.attempts,
+          this.usedOrbs,
         );
         this.renderer.renderDeathOverlay(this.deathTimer);
         break;
@@ -316,6 +406,7 @@ export class Game {
         this.renderer.renderGameplay(
           this.camera, this.player, this.level,
           this.particles, this.progress, this.attempts,
+          this.usedOrbs,
         );
         this.renderer.renderCompleteOverlay(this.completeTimer);
         break;

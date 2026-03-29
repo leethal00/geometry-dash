@@ -12,6 +12,12 @@ interface LevelDefinition {
   blocks: [number, number][];
   /** Spike positions [x, y] in grid units (pointing up) */
   spikes: [number, number][];
+  /** Jump pad positions [x, y] in grid units */
+  jumpPads: [number, number][];
+  /** Jump orb positions [x, y] in grid units (floating in air) */
+  jumpOrbs: [number, number][];
+  /** Gravity portal x positions in grid units */
+  gravityPortals: number[];
 }
 
 // --- Loaded level (pixel coordinates) ---
@@ -26,6 +32,10 @@ export interface GroundSegment {
   endPx: number;
 }
 
+export interface GravityPortal {
+  x: number;
+}
+
 export class Level {
   readonly name: string;
   readonly lengthPx: number;
@@ -33,6 +43,9 @@ export class Level {
   readonly groundSegments: GroundSegment[];
   readonly blocks: LevelObstacle[];
   readonly spikes: LevelObstacle[];
+  readonly jumpPads: LevelObstacle[];
+  readonly jumpOrbs: LevelObstacle[];
+  readonly gravityPortals: GravityPortal[];
 
   constructor(def: LevelDefinition) {
     const U = CONFIG.UNIT_SIZE;
@@ -63,6 +76,18 @@ export class Level {
     this.spikes = def.spikes
       .map(([x, y]) => ({ x: x * U, y: y * U }))
       .sort((a, b) => a.x - b.x);
+
+    this.jumpPads = def.jumpPads
+      .map(([x, y]) => ({ x: x * U, y: y * U }))
+      .sort((a, b) => a.x - b.x);
+
+    this.jumpOrbs = def.jumpOrbs
+      .map(([x, y]) => ({ x: x * U, y: y * U }))
+      .sort((a, b) => a.x - b.x);
+
+    this.gravityPortals = def.gravityPortals
+      .map(x => ({ x: x * U }))
+      .sort((a, b) => a.x - b.x);
   }
 
   /** Check if the given x position (player center) is over solid ground */
@@ -83,8 +108,8 @@ export class Level {
 // Difficulty: Very Easy → Easy. Completable in 5-15 attempts.
 // Phase 1 (0-100): single spikes, 10+ block gaps, learn timing
 // Phase 2 (100-200): blocks, first ground gaps, still forgiving
-// Phase 3 (200-300): double spikes, block+spike combos
-// Phase 4 (300-380): triple spikes max, tighter but readable
+// Phase 3 (200-300): double spikes, block+spike combos, gravity flip
+// Phase 4 (300-380): triple spikes (spaced), tighter but readable
 // ============================================================
 
 const FIRST_FLIGHT: LevelDefinition = {
@@ -123,7 +148,6 @@ const FIRST_FLIGHT: LevelDefinition = {
   spikes: [
     // === Phase 1: Very easy (0-100) ===
     // Single spikes with 10+ block gaps. Just learn to jump.
-    // First obstacle at block 18 — plenty of settling-in time
     [18, 0],
     [30, 0],
     [42, 0],
@@ -132,34 +156,56 @@ const FIRST_FLIGHT: LevelDefinition = {
     [85, 0],
 
     // === Phase 2: Easy (100-200) ===
-    // Single spikes, first block obstacles, first ground gaps
     [105, 0],
     [125, 0],
-    // After first gap landing
     [148, 0],
     [165, 0],
-    // First double spike
-    [190, 0], [193, 0],
+    // Double spike with 1.5 block gap
+    [190, 0], [192.5, 0],
 
     // === Phase 3: Medium (200-300) ===
-    // Double spikes, block+spike combos, medium spacing
     [220, 0],
-    // Double spike
-    [235, 0], [238, 0],
+    // Double spike with 1.5 block gap
+    [235, 0], [237.5, 0],
     [250, 0],
-    // Spike after block
     [275, 0],
-    // Double spike
-    [290, 0], [293, 0],
+    // Double spike with 1.5 block gap
+    [290, 0], [292.5, 0],
 
     // === Phase 4: Hardest section (300-380) ===
-    // Triple spikes max, tighter but still readable
     [305, 0],
-    // Triple spike — the hardest single obstacle
-    [330, 0], [331, 0], [332, 0],
+    // Triple spike — spaced with 1.5 block gaps between each
+    [330, 0], [332.5, 0], [335, 0],
     [348, 0],
-    // Double spike near the end
-    [360, 0], [363, 0],
+    // Double spike with 1.5 block gap
+    [360, 0], [362.5, 0],
     [372, 0],
+  ],
+
+  jumpPads: [
+    // Before block at 115 — introduces the mechanic
+    [108, 0],
+    // Before the challenging middle section
+    [222, 0],
+    // Before the 2-high wall at 270 — needs extra height
+    [265, 0],
+    // After the gravity section, before the final stretch
+    [350, 0],
+  ],
+
+  jumpOrbs: [
+    // Over first gap [140,142] — mid-air save
+    [141, 3],
+    // Over second gap [225,227] — satisfying air jump
+    [226, 3],
+    // Over the big 3-block gap [320,323] — clutch mid-air save
+    [321, 4],
+  ],
+
+  gravityPortals: [
+    // Flip to ceiling in second half
+    296,
+    // Flip back to ground
+    315,
   ],
 };

@@ -50,11 +50,20 @@ export const CONFIG = {
   PARTICLE_LIFETIME: 50,
 
   /** Spike hitbox inset in pixels (makes collision more forgiving) */
-  SPIKE_INSET: 11,
+  SPIKE_INSET: 12,
 
   /** Landing tolerance in pixels (how far below block top prevY can be) */
   LANDING_TOLERANCE: 4,
 
   /** Fall death threshold in pixels below ground */
   FALL_DEATH_Y: -300,
+
+  /** Jump pad launch velocity in px/tick (higher than normal jump) */
+  PAD_LAUNCH_VELOCITY: 24,
+
+  /** Jump orb velocity in px/tick (same as normal jump, works mid-air) */
+  ORB_JUMP_VELOCITY: 18.2,
+
+  /** Ceiling height in pixels above ground (for gravity flip) */
+  CEILING_HEIGHT: 400,
 } as const;

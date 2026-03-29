@@ -14,6 +14,8 @@ export class Player {
   rotation = 0;
   /** Target rotation (increments by 90 per jump) */
   targetRotation = 0;
+  /** Whether gravity is currently flipped (running on ceiling) */
+  gravityFlipped = false;
 
   reset(): void {
     this.x = 80; // start 2 blocks in
@@ -23,13 +25,26 @@ export class Player {
     this.alive = true;
     this.rotation = 0;
     this.targetRotation = 0;
+    this.gravityFlipped = false;
   }
 
   jump(): void {
     if (!this.onGround) return;
-    this.vy = CONFIG.JUMP_VELOCITY;
+    this.vy = this.gravityFlipped ? -CONFIG.JUMP_VELOCITY : CONFIG.JUMP_VELOCITY;
     this.onGround = false;
-    this.targetRotation += 90;
+    this.targetRotation += this.gravityFlipped ? -90 : 90;
+  }
+
+  padLaunch(): void {
+    this.vy = this.gravityFlipped ? -CONFIG.PAD_LAUNCH_VELOCITY : CONFIG.PAD_LAUNCH_VELOCITY;
+    this.onGround = false;
+    this.targetRotation += this.gravityFlipped ? -90 : 90;
+  }
+
+  orbJump(): void {
+    this.vy = this.gravityFlipped ? -CONFIG.ORB_JUMP_VELOCITY : CONFIG.ORB_JUMP_VELOCITY;
+    this.onGround = false;
+    this.targetRotation += this.gravityFlipped ? -90 : 90;
   }
 
   /** Smoothly interpolate visual rotation toward target */

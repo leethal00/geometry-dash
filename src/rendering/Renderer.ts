@@ -168,6 +168,170 @@ export class Renderer {
     ctx.shadowBlur = 0;
   }
 
+  // --- Jump pad rendering ---
+
+  private drawJumpPads(camX: number, groundY: number, level: Level): void {
+    const { ctx, canvas } = this;
+    const padH = U * 0.4;
+
+    for (const pad of level.jumpPads) {
+      const sx = pad.x - camX;
+      if (sx > canvas.width + U) break;
+      if (sx + U < -U) continue;
+
+      const sy = groundY - pad.y - padH;
+
+      // Pad body — bright yellow
+      ctx.shadowColor = '#ffdd00';
+      ctx.shadowBlur = 10;
+      ctx.fillStyle = '#ffdd00';
+      ctx.fillRect(sx + 2, sy, U - 4, padH);
+
+      // Darker inset
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#cc9900';
+      ctx.fillRect(sx + 5, sy + 2, U - 10, padH - 6);
+
+      // Upward arrow
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      const cx = sx + U / 2;
+      const arrowBase = sy + padH - 4;
+      const arrowTip = sy + 3;
+      ctx.moveTo(cx, arrowTip);
+      ctx.lineTo(cx + 7, arrowBase);
+      ctx.lineTo(cx - 7, arrowBase);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+
+  // --- Jump orb rendering ---
+
+  private drawJumpOrbs(camX: number, groundY: number, level: Level, usedOrbs: Set<number>): void {
+    const { ctx, canvas } = this;
+    const now = Date.now();
+
+    for (let i = 0; i < level.jumpOrbs.length; i++) {
+      const orb = level.jumpOrbs[i]!;
+      const sx = orb.x - camX;
+      if (sx > canvas.width + U * 2) continue;
+      if (sx + U < -U * 2) continue;
+
+      const used = usedOrbs.has(i);
+      const cx = sx + U / 2;
+      const cy = groundY - orb.y - U / 2;
+
+      // Gentle pulse
+      const pulse = Math.sin(now * 0.004 + i) * 0.15 + 1;
+      const radius = (U * 0.35) * pulse;
+      const ringRadius = (U * 0.5) * pulse;
+      const alpha = used ? 0.25 : 1;
+
+      ctx.save();
+      ctx.globalAlpha = alpha;
+
+      // Outer ring
+      ctx.strokeStyle = '#ffdd00';
+      ctx.lineWidth = 2;
+      ctx.shadowColor = '#ffdd00';
+      ctx.shadowBlur = used ? 0 : 12;
+      ctx.beginPath();
+      ctx.arc(cx, cy, ringRadius, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Inner filled circle
+      ctx.fillStyle = '#ffdd00';
+      ctx.shadowBlur = used ? 0 : 18;
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.fill();
+
+      // White highlight
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+      ctx.beginPath();
+      ctx.arc(cx - radius * 0.25, cy - radius * 0.25, radius * 0.35, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.restore();
+    }
+  }
+
+  // --- Gravity portal rendering ---
+
+  private drawGravityPortals(camX: number, groundY: number, level: Level): void {
+    const { ctx, canvas } = this;
+    const portalW = U * 1.2;
+    const portalH = U * 6;
+    const now = Date.now();
+
+    for (const portal of level.gravityPortals) {
+      const sx = portal.x - camX - portalW / 2;
+      if (sx > canvas.width + portalW) continue;
+      if (sx + portalW < -portalW) continue;
+
+      const sy = groundY - portalH;
+
+      // Blue/yellow gradient body
+      const grad = ctx.createLinearGradient(sx, sy, sx, sy + portalH);
+      grad.addColorStop(0, 'rgba(0, 100, 255, 0.7)');
+      grad.addColorStop(0.4, 'rgba(0, 200, 255, 0.8)');
+      grad.addColorStop(0.6, 'rgba(255, 220, 0, 0.8)');
+      grad.addColorStop(1, 'rgba(255, 180, 0, 0.7)');
+
+      ctx.shadowColor = '#00aaff';
+      ctx.shadowBlur = 20;
+      ctx.fillStyle = grad;
+      ctx.fillRect(sx, sy, portalW, portalH);
+
+      // Border
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(sx, sy, portalW, portalH);
+
+      // Animated particles floating up/down inside
+      ctx.shadowColor = '#ffffff';
+      ctx.shadowBlur = 4;
+      for (let p = 0; p < 6; p++) {
+        const t = (now * 0.002 + p * 1.2) % 1;
+        const px = sx + portalW * (0.2 + Math.sin(now * 0.001 + p * 2) * 0.3 + 0.3);
+        const py = sy + portalH * t;
+        const pSize = 2 + Math.sin(now * 0.003 + p) * 1;
+        const pAlpha = Math.sin(t * Math.PI) * 0.8;
+
+        ctx.fillStyle = `rgba(255, 255, 255, ${pAlpha})`;
+        ctx.beginPath();
+        ctx.arc(px, py, pSize, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.shadowBlur = 0;
+    }
+  }
+
+  // --- Ceiling rendering (when gravity is flipped) ---
+
+  private drawCeiling(_camX: number, groundY: number): void {
+    const { ctx, canvas } = this;
+    const ceilScreenY = groundY - CONFIG.CEILING_HEIGHT;
+
+    // Fill above ceiling
+    ctx.fillStyle = 'rgba(13, 27, 42, 0.8)';
+    ctx.fillRect(0, 0, canvas.width, ceilScreenY);
+
+    // Ceiling neon line
+    ctx.strokeStyle = '#ff6600';
+    ctx.lineWidth = 2;
+    ctx.shadowColor = '#ff6600';
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.moveTo(0, ceilScreenY);
+    ctx.lineTo(canvas.width, ceilScreenY);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+
   // --- Player rendering ---
 
   private drawPlayer(camX: number, groundY: number, player: Player): void {
@@ -178,6 +342,12 @@ export class Renderer {
 
     ctx.save();
     ctx.translate(sx + S / 2, sy + S / 2);
+
+    // Flip sprite when gravity is flipped
+    if (player.gravityFlipped) {
+      ctx.scale(1, -1);
+    }
+
     ctx.rotate(player.rotation * Math.PI / 180);
 
     // Glow
@@ -342,6 +512,7 @@ export class Renderer {
     particles: ParticleSystem,
     progress: number,
     attempts: number,
+    usedOrbs: Set<number>,
   ): void {
     const { ctx, canvas } = this;
     const groundY = camera.groundScreenY;
@@ -358,6 +529,13 @@ export class Renderer {
     this.drawGround(camX, groundY, level);
     this.drawBlocks(camX, groundY, level);
     this.drawSpikes(camX, groundY, level);
+    this.drawJumpPads(camX, groundY, level);
+    this.drawJumpOrbs(camX, groundY, level, usedOrbs);
+    this.drawGravityPortals(camX, groundY, level);
+
+    if (player.gravityFlipped) {
+      this.drawCeiling(camX, groundY);
+    }
 
     if (player.alive) {
       this.drawPlayer(camX, groundY, player);
