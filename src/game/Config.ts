@@ -88,5 +88,9 @@ export const CONFIG = {
   // --- Visual ---
 
   /** Number of trail positions to store behind player */
-  TRAIL_LENGTH: 8,
+  TRAIL_LENGTH: 12,
+
+  /** Death particle count (larger shatter) */
+  DEATH_PARTICLE_SIZE_MIN: 5,
+  DEATH_PARTICLE_SIZE_MAX: 14,
 } as const;
