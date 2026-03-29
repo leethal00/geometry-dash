@@ -28,8 +28,17 @@ export const CONFIG = {
   /** Player horizontal position on screen (fraction from left) */
   PLAYER_SCREEN_X: 0.25,
 
-  /** Horizontal scroll speed in px/tick (8.4 blocks/sec × 40px ÷ 60fps) */
-  SCROLL_SPEED: 5.6,
+  // --- Music sync ---
+
+  /** Beats per minute */
+  BPM: 128,
+
+  /** Grid units per beat (obstacle spacing quantum) */
+  BEAT_UNITS: 4,
+
+  /** Scroll speed derived from BPM: exactly BEAT_UNITS per beat
+   *  = (BPM × BEAT_UNITS × UNIT_SIZE) / (FPS × 60) */
+  SCROLL_SPEED: (128 * 4 * 40) / (60 * 60), // ≈5.689 px/tick
 
   /** Gravity in px/tick² (subtracted from vy each tick) */
   GRAVITY: 1.4,
@@ -40,14 +49,21 @@ export const CONFIG = {
   /** Ground line position as fraction of canvas height from top */
   GROUND_Y_RATIO: 0.78,
 
-  /** Ticks to wait after death before auto-restart */
-  DEATH_PAUSE_TICKS: 50,
+  // --- Death ---
+
+  /** Ticks to wait after death before auto-restart (fast respawn) */
+  DEATH_PAUSE_TICKS: 15,
+
+  /** Ticks to freeze before particles explode */
+  DEATH_FREEZE_TICKS: 2,
 
   /** Number of particles emitted on death */
-  DEATH_PARTICLE_COUNT: 25,
+  DEATH_PARTICLE_COUNT: 30,
 
   /** Particle lifetime in ticks */
   PARTICLE_LIFETIME: 50,
+
+  // --- Collision ---
 
   /** Spike hitbox inset in pixels (makes collision more forgiving) */
   SPIKE_INSET: 12,
@@ -58,6 +74,8 @@ export const CONFIG = {
   /** Fall death threshold in pixels below ground */
   FALL_DEATH_Y: -300,
 
+  // --- Game objects ---
+
   /** Jump pad launch velocity in px/tick (higher than normal jump) */
   PAD_LAUNCH_VELOCITY: 24,
 
@@ -66,4 +84,9 @@ export const CONFIG = {
 
   /** Ceiling height in pixels above ground (for gravity flip) */
   CEILING_HEIGHT: 400,
+
+  // --- Visual ---
+
+  /** Number of trail positions to store behind player */
+  TRAIL_LENGTH: 8,
 } as const;

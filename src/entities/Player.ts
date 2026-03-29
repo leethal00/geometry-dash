@@ -1,5 +1,11 @@
 import { CONFIG } from '../game/Config.js';
 
+export interface TrailPoint {
+  x: number;
+  y: number;
+  rotation: number;
+}
+
 export class Player {
   /** World position in pixels (bottom-left of hitbox, y positive = up from ground) */
   x = 0;
@@ -16,6 +22,8 @@ export class Player {
   targetRotation = 0;
   /** Whether gravity is currently flipped (running on ceiling) */
   gravityFlipped = false;
+  /** Trail of recent positions for rendering */
+  trail: TrailPoint[] = [];
 
   reset(): void {
     this.x = 80; // start 2 blocks in
@@ -26,6 +34,7 @@ export class Player {
     this.rotation = 0;
     this.targetRotation = 0;
     this.gravityFlipped = false;
+    this.trail = [];
   }
 
   jump(): void {
@@ -45,6 +54,14 @@ export class Player {
     this.vy = this.gravityFlipped ? -CONFIG.ORB_JUMP_VELOCITY : CONFIG.ORB_JUMP_VELOCITY;
     this.onGround = false;
     this.targetRotation += this.gravityFlipped ? -90 : 90;
+  }
+
+  /** Record current position for trail rendering */
+  recordTrail(): void {
+    this.trail.push({ x: this.x, y: this.y, rotation: this.rotation });
+    if (this.trail.length > CONFIG.TRAIL_LENGTH) {
+      this.trail.shift();
+    }
   }
 
   /** Smoothly interpolate visual rotation toward target */

@@ -12,29 +12,37 @@ export class Renderer {
   private readonly canvas: HTMLCanvasElement;
   private readonly background: Background;
 
+  // Per-frame state set in renderGameplay
+  private beatPulse = 0;
+  private levelProgress = 0;
+
   constructor(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D) {
     this.canvas = canvas;
     this.ctx = ctx;
     this.background = new Background();
   }
 
-  // --- Background gradient (drawn without shake) ---
+  // --- Dynamic background gradient with beat pulse and hue shift ---
 
   private drawGradient(): void {
     const { ctx, canvas } = this;
+    const hue = 270 + this.levelProgress * 80;
+    const bp = this.beatPulse;
+
     const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
-    grad.addColorStop(0, '#0a0015');
-    grad.addColorStop(0.6, '#0d0028');
-    grad.addColorStop(1, '#12002a');
+    grad.addColorStop(0, `hsl(${hue}, 60%, ${3 + bp * 2}%)`);
+    grad.addColorStop(0.6, `hsl(${hue + 10}, 70%, ${5 + bp * 3}%)`);
+    grad.addColorStop(1, `hsl(${hue + 20}, 65%, ${7 + bp * 2}%)`);
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
   }
 
-  // --- Ground rendering ---
+  // --- Ground rendering with beat-pulsing glow ---
 
   private drawGround(camX: number, groundY: number, level: Level): void {
     const { ctx, canvas } = this;
     const groundH = canvas.height - groundY;
+    const bp = this.beatPulse;
 
     // Draw solid ground segments with checker pattern
     for (const seg of level.groundSegments) {
@@ -51,7 +59,7 @@ export class Renderer {
       }
     }
 
-    // Draw horizontal grid lines in ground
+    // Horizontal grid lines in ground
     ctx.strokeStyle = 'rgba(0, 229, 255, 0.06)';
     ctx.lineWidth = 1;
     for (let row = 1; row * U < groundH; row++) {
@@ -62,11 +70,13 @@ export class Renderer {
       ctx.stroke();
     }
 
-    // Draw neon ground top line for each segment
-    ctx.strokeStyle = '#00e5ff';
-    ctx.lineWidth = 2;
+    // Neon ground top line — pulses on beat
+    const glowBlur = 8 + bp * 14;
+    const lineAlpha = 1;
+    ctx.strokeStyle = `rgba(0, 229, 255, ${lineAlpha})`;
+    ctx.lineWidth = 2 + bp * 1.5;
     ctx.shadowColor = '#00e5ff';
-    ctx.shadowBlur = 8;
+    ctx.shadowBlur = glowBlur;
     for (const seg of level.groundSegments) {
       const sx = seg.startPx - camX;
       const ex = seg.endPx - camX;
@@ -78,7 +88,7 @@ export class Renderer {
     }
     ctx.shadowBlur = 0;
 
-    // Draw vertical lines at gap edges
+    // Vertical lines at gap edges
     ctx.strokeStyle = '#00e5ff';
     ctx.lineWidth = 1.5;
     ctx.shadowColor = '#00e5ff';
@@ -109,21 +119,18 @@ export class Renderer {
 
     for (const block of level.blocks) {
       const sx = block.x - camX;
-      if (sx > canvas.width + U) break; // sorted by x, can stop early
+      if (sx > canvas.width + U) break;
       if (sx + U < -U) continue;
 
       const sy = groundY - block.y - U;
 
-      // Block body
       ctx.fillStyle = '#1a2a4a';
       ctx.fillRect(sx, sy, U, U);
 
-      // Block border (neon blue)
       ctx.strokeStyle = '#3060a0';
       ctx.lineWidth = 1.5;
       ctx.strokeRect(sx + 1, sy + 1, U - 2, U - 2);
 
-      // Inner highlight
       ctx.strokeStyle = 'rgba(80, 120, 200, 0.3)';
       ctx.lineWidth = 1;
       ctx.strokeRect(sx + 4, sy + 4, U - 8, U - 8);
@@ -146,16 +153,14 @@ export class Renderer {
       const baseY = groundY - spike.y;
       const tipY = groundY - spike.y - U;
 
-      // Spike triangle (pointing up)
       ctx.fillStyle = '#ffffff';
       ctx.beginPath();
-      ctx.moveTo(sx + U / 2, tipY);         // tip
-      ctx.lineTo(sx + U - 3, baseY);         // bottom right
-      ctx.lineTo(sx + 3, baseY);             // bottom left
+      ctx.moveTo(sx + U / 2, tipY);
+      ctx.lineTo(sx + U - 3, baseY);
+      ctx.lineTo(sx + 3, baseY);
       ctx.closePath();
       ctx.fill();
 
-      // Inner darker triangle for depth
       ctx.fillStyle = '#cc3333';
       ctx.beginPath();
       ctx.moveTo(sx + U / 2, tipY + 8);
@@ -168,11 +173,12 @@ export class Renderer {
     ctx.shadowBlur = 0;
   }
 
-  // --- Jump pad rendering ---
+  // --- Jump pad rendering (beat-enhanced glow) ---
 
   private drawJumpPads(camX: number, groundY: number, level: Level): void {
     const { ctx, canvas } = this;
     const padH = U * 0.4;
+    const bp = this.beatPulse;
 
     for (const pad of level.jumpPads) {
       const sx = pad.x - camX;
@@ -181,13 +187,12 @@ export class Renderer {
 
       const sy = groundY - pad.y - padH;
 
-      // Pad body — bright yellow
+      // Glow pulses on beat
       ctx.shadowColor = '#ffdd00';
-      ctx.shadowBlur = 10;
-      ctx.fillStyle = '#ffdd00';
+      ctx.shadowBlur = 10 + bp * 12;
+      ctx.fillStyle = `rgb(${255}, ${221 + bp * 34}, ${bp * 60})`;
       ctx.fillRect(sx + 2, sy, U - 4, padH);
 
-      // Darker inset
       ctx.shadowBlur = 0;
       ctx.fillStyle = '#cc9900';
       ctx.fillRect(sx + 5, sy + 2, U - 10, padH - 6);
@@ -196,21 +201,20 @@ export class Renderer {
       ctx.fillStyle = '#ffffff';
       ctx.beginPath();
       const cx = sx + U / 2;
-      const arrowBase = sy + padH - 4;
-      const arrowTip = sy + 3;
-      ctx.moveTo(cx, arrowTip);
-      ctx.lineTo(cx + 7, arrowBase);
-      ctx.lineTo(cx - 7, arrowBase);
+      ctx.moveTo(cx, sy + 3);
+      ctx.lineTo(cx + 7, sy + padH - 4);
+      ctx.lineTo(cx - 7, sy + padH - 4);
       ctx.closePath();
       ctx.fill();
     }
   }
 
-  // --- Jump orb rendering ---
+  // --- Jump orb rendering (beat-enhanced pulse) ---
 
   private drawJumpOrbs(camX: number, groundY: number, level: Level, usedOrbs: Set<number>): void {
     const { ctx, canvas } = this;
     const now = Date.now();
+    const bp = this.beatPulse;
 
     for (let i = 0; i < level.jumpOrbs.length; i++) {
       const orb = level.jumpOrbs[i]!;
@@ -222,32 +226,32 @@ export class Renderer {
       const cx = sx + U / 2;
       const cy = groundY - orb.y - U / 2;
 
-      // Gentle pulse
-      const pulse = Math.sin(now * 0.004 + i) * 0.15 + 1;
+      // Pulse synced to beat + gentle sine
+      const pulse = (Math.sin(now * 0.004 + i) * 0.1 + 1) + bp * 0.15;
       const radius = (U * 0.35) * pulse;
       const ringRadius = (U * 0.5) * pulse;
-      const alpha = used ? 0.25 : 1;
+      const alpha = used ? 0.2 : 1;
 
       ctx.save();
       ctx.globalAlpha = alpha;
 
       // Outer ring
       ctx.strokeStyle = '#ffdd00';
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 2 + bp * 1.5;
       ctx.shadowColor = '#ffdd00';
-      ctx.shadowBlur = used ? 0 : 12;
+      ctx.shadowBlur = used ? 0 : 12 + bp * 10;
       ctx.beginPath();
       ctx.arc(cx, cy, ringRadius, 0, Math.PI * 2);
       ctx.stroke();
 
-      // Inner filled circle
+      // Inner circle
       ctx.fillStyle = '#ffdd00';
-      ctx.shadowBlur = used ? 0 : 18;
+      ctx.shadowBlur = used ? 0 : 18 + bp * 8;
       ctx.beginPath();
       ctx.arc(cx, cy, radius, 0, Math.PI * 2);
       ctx.fill();
 
-      // White highlight
+      // Highlight
       ctx.shadowBlur = 0;
       ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
       ctx.beginPath();
@@ -258,13 +262,14 @@ export class Renderer {
     }
   }
 
-  // --- Gravity portal rendering ---
+  // --- Gravity portal rendering (beat-enhanced) ---
 
   private drawGravityPortals(camX: number, groundY: number, level: Level): void {
     const { ctx, canvas } = this;
     const portalW = U * 1.2;
     const portalH = U * 6;
     const now = Date.now();
+    const bp = this.beatPulse;
 
     for (const portal of level.gravityPortals) {
       const sx = portal.x - camX - portalW / 2;
@@ -273,25 +278,24 @@ export class Renderer {
 
       const sy = groundY - portalH;
 
-      // Blue/yellow gradient body
+      // Gradient body
       const grad = ctx.createLinearGradient(sx, sy, sx, sy + portalH);
-      grad.addColorStop(0, 'rgba(0, 100, 255, 0.7)');
-      grad.addColorStop(0.4, 'rgba(0, 200, 255, 0.8)');
-      grad.addColorStop(0.6, 'rgba(255, 220, 0, 0.8)');
-      grad.addColorStop(1, 'rgba(255, 180, 0, 0.7)');
+      grad.addColorStop(0, `rgba(0, ${100 + bp * 60}, 255, ${0.7 + bp * 0.2})`);
+      grad.addColorStop(0.4, `rgba(0, ${200 + bp * 55}, 255, ${0.8 + bp * 0.15})`);
+      grad.addColorStop(0.6, `rgba(255, ${220 + bp * 35}, 0, ${0.8 + bp * 0.15})`);
+      grad.addColorStop(1, `rgba(255, ${180 + bp * 40}, 0, ${0.7 + bp * 0.2})`);
 
       ctx.shadowColor = '#00aaff';
-      ctx.shadowBlur = 20;
+      ctx.shadowBlur = 20 + bp * 15;
       ctx.fillStyle = grad;
       ctx.fillRect(sx, sy, portalW, portalH);
 
-      // Border
       ctx.shadowBlur = 0;
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+      ctx.strokeStyle = `rgba(255, 255, 255, ${0.5 + bp * 0.3})`;
       ctx.lineWidth = 2;
       ctx.strokeRect(sx, sy, portalW, portalH);
 
-      // Animated particles floating up/down inside
+      // Animated particles inside
       ctx.shadowColor = '#ffffff';
       ctx.shadowBlur = 4;
       for (let p = 0; p < 6; p++) {
@@ -312,24 +316,46 @@ export class Renderer {
 
   // --- Ceiling rendering (when gravity is flipped) ---
 
-  private drawCeiling(_camX: number, groundY: number): void {
+  private drawCeiling(groundY: number): void {
     const { ctx, canvas } = this;
     const ceilScreenY = groundY - CONFIG.CEILING_HEIGHT;
 
-    // Fill above ceiling
     ctx.fillStyle = 'rgba(13, 27, 42, 0.8)';
     ctx.fillRect(0, 0, canvas.width, ceilScreenY);
 
-    // Ceiling neon line
     ctx.strokeStyle = '#ff6600';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 2 + this.beatPulse * 1.5;
     ctx.shadowColor = '#ff6600';
-    ctx.shadowBlur = 8;
+    ctx.shadowBlur = 8 + this.beatPulse * 10;
     ctx.beginPath();
     ctx.moveTo(0, ceilScreenY);
     ctx.lineTo(canvas.width, ceilScreenY);
     ctx.stroke();
     ctx.shadowBlur = 0;
+  }
+
+  // --- Player trail ---
+
+  private drawTrail(camX: number, groundY: number, player: Player): void {
+    const { ctx } = this;
+    const S = CONFIG.PLAYER_SIZE;
+    const trail = player.trail;
+
+    for (let i = 0; i < trail.length; i++) {
+      const pos = trail[i]!;
+      const alpha = ((i + 1) / (trail.length + 1)) * 0.25;
+      const sx = pos.x - camX;
+      const sy = groundY - pos.y - S;
+
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.translate(sx + S / 2, sy + S / 2);
+      if (player.gravityFlipped) ctx.scale(1, -1);
+      ctx.rotate(pos.rotation * Math.PI / 180);
+      ctx.fillStyle = '#40ff40';
+      ctx.fillRect(-S / 2, -S / 2, S, S);
+      ctx.restore();
+    }
   }
 
   // --- Player rendering ---
@@ -343,7 +369,6 @@ export class Renderer {
     ctx.save();
     ctx.translate(sx + S / 2, sy + S / 2);
 
-    // Flip sprite when gravity is flipped
     if (player.gravityFlipped) {
       ctx.scale(1, -1);
     }
@@ -363,7 +388,7 @@ export class Renderer {
     ctx.lineWidth = 2;
     ctx.strokeRect(-S / 2, -S / 2, S, S);
 
-    // Eye (simple face like GD cube)
+    // Eye (face like GD cube)
     ctx.shadowBlur = 0;
     ctx.fillStyle = '#ffffff';
     const eyeSize = S * 0.28;
@@ -403,7 +428,6 @@ export class Renderer {
     const { ctx, canvas } = this;
     const w = canvas.width;
 
-    // Progress bar background
     const barY = 16;
     const barH = 6;
     const barPad = 40;
@@ -412,7 +436,6 @@ export class Renderer {
     ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
     ctx.fillRect(barPad, barY, barW, barH);
 
-    // Progress bar fill
     const fillW = Math.min(progress, 1) * barW;
     ctx.fillStyle = '#40ff40';
     ctx.shadowColor = '#40ff40';
@@ -420,14 +443,12 @@ export class Renderer {
     ctx.fillRect(barPad, barY, fillW, barH);
     ctx.shadowBlur = 0;
 
-    // Progress percentage
     ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
     ctx.font = '13px Arial, sans-serif';
     ctx.textAlign = 'right';
     ctx.textBaseline = 'top';
     ctx.fillText(`${Math.floor(Math.min(progress, 1) * 100)}%`, w - barPad, barY + barH + 4);
 
-    // Attempt counter
     ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
     ctx.font = '14px Arial, sans-serif';
     ctx.textAlign = 'left';
@@ -442,7 +463,14 @@ export class Renderer {
     const w = canvas.width;
     const h = canvas.height;
 
-    this.drawGradient();
+    // Static gradient for menu
+    const grad = ctx.createLinearGradient(0, 0, 0, h);
+    grad.addColorStop(0, '#0a0015');
+    grad.addColorStop(0.6, '#0d0028');
+    grad.addColorStop(1, '#12002a');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, w, h);
+
     this.background.render(ctx, menuTime * 0.8, w, h);
 
     // Floating geometric decorations
@@ -473,7 +501,6 @@ export class Renderer {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('GEOMETRY DASH', w / 2, h * 0.33);
-    // Double-draw for stronger glow
     ctx.shadowBlur = 20;
     ctx.fillText('GEOMETRY DASH', w / 2, h * 0.33);
     ctx.restore();
@@ -513,14 +540,19 @@ export class Renderer {
     progress: number,
     attempts: number,
     usedOrbs: Set<number>,
+    beatProgress: number,
   ): void {
     const { ctx, canvas } = this;
     const groundY = camera.groundScreenY;
     const camX = camera.x;
 
-    // Background (no shake)
+    // Store beat state for private methods
+    this.beatPulse = Math.max(0, 1 - beatProgress * 3.5);
+    this.levelProgress = progress;
+
+    // Background with beat pulse and hue shift
     this.drawGradient();
-    this.background.render(ctx, camX, canvas.width, canvas.height);
+    this.background.render(ctx, camX, canvas.width, canvas.height, beatProgress, progress);
 
     // World rendering with shake
     ctx.save();
@@ -534,10 +566,11 @@ export class Renderer {
     this.drawGravityPortals(camX, groundY, level);
 
     if (player.gravityFlipped) {
-      this.drawCeiling(camX, groundY);
+      this.drawCeiling(groundY);
     }
 
     if (player.alive) {
+      this.drawTrail(camX, groundY, player);
       this.drawPlayer(camX, groundY, player);
     }
 
@@ -549,14 +582,24 @@ export class Renderer {
     this.drawHUD(progress, attempts);
   }
 
-  // --- Death overlay ---
+  // --- Death overlay: white flash then dim ---
 
   renderDeathOverlay(deathTimer: number): void {
     const { ctx, canvas } = this;
-    // Red flash that fades
-    const flashAlpha = Math.max(0, (deathTimer / CONFIG.DEATH_PAUSE_TICKS) * 0.25);
-    ctx.fillStyle = `rgba(255, 0, 0, ${flashAlpha})`;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const w = canvas.width;
+    const h = canvas.height;
+    const elapsed = CONFIG.DEATH_PAUSE_TICKS - deathTimer;
+
+    // White flash for first 6 ticks (~100ms)
+    if (elapsed < 6) {
+      const flashAlpha = Math.max(0, (1 - elapsed / 6) * 0.6);
+      ctx.fillStyle = `rgba(255, 255, 255, ${flashAlpha})`;
+      ctx.fillRect(0, 0, w, h);
+    }
+
+    // Slight background dim
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.12)';
+    ctx.fillRect(0, 0, w, h);
   }
 
   // --- Complete overlay ---
@@ -566,12 +609,10 @@ export class Renderer {
     const w = canvas.width;
     const h = canvas.height;
 
-    // Darken background
     const alpha = Math.min(0.5, completeTime * 0.008);
     ctx.fillStyle = `rgba(0, 0, 0, ${alpha})`;
     ctx.fillRect(0, 0, w, h);
 
-    // "Level Complete!" text
     if (completeTime > 15) {
       const textAlpha = Math.min(1, (completeTime - 15) * 0.04);
       ctx.save();
@@ -585,7 +626,6 @@ export class Renderer {
       ctx.fillText('Level Complete!', w / 2, h * 0.35);
       ctx.restore();
 
-      // Stats
       if (completeTime > 40) {
         ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
         ctx.font = `${Math.floor(h / 20)}px Arial, sans-serif`;
@@ -593,7 +633,6 @@ export class Renderer {
         ctx.fillText('100%', w / 2, h * 0.52);
       }
 
-      // Return prompt
       if (completeTime > 90) {
         const pulse = Math.sin(completeTime * 0.06) * 0.3 + 0.7;
         ctx.globalAlpha = pulse;

@@ -6,6 +6,7 @@ import { Player } from '../entities/Player.js';
 import { Level } from '../level/Level.js';
 import { Renderer } from '../rendering/Renderer.js';
 import { ParticleSystem } from '../rendering/Particles.js';
+import { AudioManager } from '../audio/AudioManager.js';
 
 const U = CONFIG.UNIT_SIZE;
 const S = CONFIG.PLAYER_SIZE;
@@ -20,6 +21,7 @@ export class Game {
   readonly player: Player;
   readonly particles: ParticleSystem;
   readonly renderer: Renderer;
+  readonly audio: AudioManager;
 
   private level: Level;
   private lastTime = 0;
@@ -49,6 +51,7 @@ export class Game {
     this.player = new Player();
     this.particles = new ParticleSystem();
     this.renderer = new Renderer(canvas, ctx);
+    this.audio = new AudioManager();
     this.level = Level.firstLevel();
 
     this.resizeCanvas();
@@ -67,6 +70,7 @@ export class Game {
   stop(): void {
     this._running = false;
     this.input.detach();
+    this.audio.stop();
     if (this.animationFrameId) {
       cancelAnimationFrame(this.animationFrameId);
       this.animationFrameId = 0;
@@ -133,6 +137,7 @@ export class Game {
     this.progress = 0;
     this.attempts++;
     this.usedOrbs.clear();
+    this.audio.start(); // Start (or restart) music
     this.stateMachine.transition(GameState.Playing);
   }
 
@@ -165,6 +170,9 @@ export class Game {
     player.x += CONFIG.SCROLL_SPEED;
     player.y += player.vy;
 
+    // --- Record trail ---
+    player.recordTrail();
+
     // --- Ground collision (normal gravity) ---
     player.onGround = false;
     const centerX = player.x + S / 2;
@@ -190,7 +198,6 @@ export class Game {
       if (block.x > player.x + S + 80) break;
       if (block.x + U < player.x - 20) continue;
 
-      // AABB overlap test
       if (
         player.x < block.x + U &&
         player.x + S > block.x &&
@@ -220,7 +227,6 @@ export class Game {
       if (spike.x > player.x + S + 80) break;
       if (spike.x + U < player.x - 20) continue;
 
-      // Inset hitbox for fairness
       const hx = spike.x + INSET;
       const hy = spike.y + INSET;
       const hw = U - INSET * 2;
@@ -259,7 +265,6 @@ export class Game {
       const prevCenter = playerCenter - CONFIG.SCROLL_SPEED;
       if (prevCenter < portal.x && playerCenter >= portal.x) {
         player.gravityFlipped = !player.gravityFlipped;
-        // Small velocity boost in new gravity direction to start moving
         if (player.gravityFlipped) {
           player.vy = CONFIG.GRAVITY * 3;
           player.onGround = false;
@@ -276,7 +281,7 @@ export class Game {
       return;
     }
 
-    // --- Rise death (flipped gravity, flew too high) ---
+    // --- Rise death (flipped gravity) ---
     if (player.gravityFlipped && player.y > CONFIG.CEILING_HEIGHT + 200) {
       this.die();
       return;
@@ -310,7 +315,6 @@ export class Game {
       if (orb.x > player.x + S + 80) break;
       if (orb.x + U < player.x - 20) continue;
 
-      // Circle vs AABB overlap (approximate with center distance)
       const orbCX = orb.x + U / 2;
       const orbCY = orb.y + U / 2;
       const playerCX = player.x + S / 2;
@@ -329,19 +333,26 @@ export class Game {
   }
 
   // ================================================================
-  // Death
+  // Death — freeze 2 frames, white flash, fast respawn
   // ================================================================
 
   private die(): void {
     this.player.alive = false;
     this.deathTimer = CONFIG.DEATH_PAUSE_TICKS;
-    this.camera.shake(14);
+    this.camera.shake(16);
     this.particles.emitDeath(this.player.x, this.player.y);
+    this.audio.stop();
     this.stateMachine.transition(GameState.Dead);
   }
 
   private updateDead(): void {
-    this.particles.update();
+    const elapsed = CONFIG.DEATH_PAUSE_TICKS - this.deathTimer;
+
+    // Freeze particles for first 2 ticks
+    if (elapsed >= CONFIG.DEATH_FREEZE_TICKS) {
+      this.particles.update();
+    }
+
     this.camera.update();
     this.deathTimer--;
     if (this.deathTimer <= 0) {
@@ -356,6 +367,7 @@ export class Game {
   private complete(): void {
     this.completeTimer = 0;
     this.particles.emitCelebration(this.player.x, this.player.y);
+    this.audio.stop();
     this.stateMachine.transition(GameState.Complete);
   }
 
@@ -377,6 +389,7 @@ export class Game {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     const state = this.stateMachine.state;
+    const beatProgress = this.audio.playing ? this.audio.beatProgress : 0;
 
     switch (state) {
       case GameState.Menu:
@@ -388,7 +401,7 @@ export class Game {
         this.renderer.renderGameplay(
           this.camera, this.player, this.level,
           this.particles, this.progress, this.attempts,
-          this.usedOrbs,
+          this.usedOrbs, beatProgress,
         );
         if (state === GameState.Paused) this.renderPauseOverlay();
         break;
@@ -397,7 +410,7 @@ export class Game {
         this.renderer.renderGameplay(
           this.camera, this.player, this.level,
           this.particles, this.progress, this.attempts,
-          this.usedOrbs,
+          this.usedOrbs, beatProgress,
         );
         this.renderer.renderDeathOverlay(this.deathTimer);
         break;
@@ -406,7 +419,7 @@ export class Game {
         this.renderer.renderGameplay(
           this.camera, this.player, this.level,
           this.particles, this.progress, this.attempts,
-          this.usedOrbs,
+          this.usedOrbs, beatProgress,
         );
         this.renderer.renderCompleteOverlay(this.completeTimer);
         break;
