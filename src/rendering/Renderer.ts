@@ -13,7 +13,7 @@ export class Renderer {
   private readonly background: Background;
 
   private beatPulse = 0;
-  private levelProgress = 0;
+  private sectionHue = 200;
 
   constructor(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D) {
     this.canvas = canvas;
@@ -21,35 +21,61 @@ export class Renderer {
     this.background = new Background();
   }
 
-  // --- High-contrast gradient with beat brightness pulse ---
+  /** Colour theme shifts through the level: cyan→purple→green→orange→pink→cyan */
+  private computeSectionHue(progress: number): number {
+    return (200 + progress * 240) % 360;
+  }
+
+  // --- Gradient with colour section + beat pulse ---
 
   private drawGradient(): void {
     const { ctx, canvas } = this;
-    const hue = 270 + this.levelProgress * 80;
+    const hue = this.sectionHue;
     const bp = this.beatPulse;
 
     const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
     grad.addColorStop(0, `hsl(${hue}, 70%, ${2 + bp * 3}%)`);
-    grad.addColorStop(0.5, `hsl(${hue + 10}, 80%, ${4 + bp * 4}%)`);
-    grad.addColorStop(1, `hsl(${hue + 20}, 75%, ${6 + bp * 3}%)`);
+    grad.addColorStop(0.5, `hsl(${hue + 15}, 80%, ${4 + bp * 4}%)`);
+    grad.addColorStop(1, `hsl(${hue + 30}, 75%, ${6 + bp * 3}%)`);
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Beat flash — entire screen brightens on beat
+    // Beat flash — whole screen brightens
     if (bp > 0) {
-      ctx.fillStyle = `rgba(255, 255, 255, ${bp * 0.045})`;
+      ctx.fillStyle = `rgba(255, 255, 255, ${bp * 0.05})`;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
   }
 
-  // --- Rich ground with checkerboard, grid lines, thick glowing line ---
+  // --- Visual ceiling line (always visible, frames play area) ---
+
+  private drawCeilingFrame(groundY: number): void {
+    const { ctx, canvas } = this;
+    const hue = this.sectionHue;
+    const bp = this.beatPulse;
+    // Ceiling at ~8 blocks above ground
+    const ceilY = groundY - U * 8;
+
+    ctx.strokeStyle = `hsla(${hue + 180}, 60%, 40%, ${0.15 + bp * 0.08})`;
+    ctx.lineWidth = 2;
+    ctx.shadowColor = `hsl(${hue + 180}, 60%, 50%)`;
+    ctx.shadowBlur = 6 + bp * 4;
+    ctx.beginPath();
+    ctx.moveTo(0, ceilY);
+    ctx.lineTo(canvas.width, ceilY);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+
+  // --- Rich ground with checker, grid, decoration ---
 
   private drawGround(camX: number, groundY: number, level: Level): void {
     const { ctx, canvas } = this;
     const groundH = canvas.height - groundY;
     const bp = this.beatPulse;
+    const hue = this.sectionHue;
 
-    // Checkerboard with vertical + horizontal grid
+    // Checkerboard fill
     for (const seg of level.groundSegments) {
       const startCol = Math.floor(seg.startPx / U);
       const endCol = Math.ceil(seg.endPx / U);
@@ -59,17 +85,15 @@ export class Renderer {
         const sx = wx - camX;
         if (sx > canvas.width + U || sx + U < 0) continue;
 
-        // Alternating checker fill
-        const dark = col % 2 === 0;
         for (let row = 0; row * U < groundH; row++) {
           const even = (col + row) % 2 === 0;
           ctx.fillStyle = even ? '#0a1520' : '#0e1e30';
           ctx.fillRect(sx, groundY + row * U, U, U);
         }
 
-        // Vertical grid line at each column
-        if (!dark) {
-          ctx.strokeStyle = 'rgba(0, 200, 255, 0.05)';
+        // Vertical grid line
+        if (col % 2 !== 0) {
+          ctx.strokeStyle = `hsla(${hue}, 50%, 40%, 0.04)`;
           ctx.lineWidth = 1;
           ctx.beginPath();
           ctx.moveTo(sx, groundY);
@@ -80,21 +104,46 @@ export class Renderer {
     }
 
     // Horizontal grid lines
-    ctx.strokeStyle = 'rgba(0, 200, 255, 0.06)';
+    ctx.strokeStyle = `hsla(${hue}, 50%, 40%, 0.05)`;
     ctx.lineWidth = 1;
     for (let row = 1; row * U < groundH; row++) {
-      const ly = groundY + row * U;
       ctx.beginPath();
-      ctx.moveTo(0, ly);
-      ctx.lineTo(canvas.width, ly);
+      ctx.moveTo(0, groundY + row * U);
+      ctx.lineTo(canvas.width, groundY + row * U);
       ctx.stroke();
     }
 
-    // Thick glowing ground top line (3px + beat pulse)
+    // Ground decoration: small downward triangles along ground line
+    const startDeco = Math.floor(camX / (U * 4)) * 4;
+    const endDeco = startDeco + Math.ceil(canvas.width / U) + 8;
+    for (let col = startDeco; col < endDeco; col += 4) {
+      const sx = col * U - camX;
+      if (sx < -U || sx > canvas.width + U) continue;
+      // Small downward triangle decoration
+      ctx.fillStyle = `hsla(${hue}, 50%, 40%, 0.08)`;
+      ctx.beginPath();
+      ctx.moveTo(sx + U * 0.5, groundY + 2);
+      ctx.lineTo(sx + U * 0.8, groundY + U * 0.5);
+      ctx.lineTo(sx + U * 0.2, groundY + U * 0.5);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // Glowing dots in ground at regular intervals
+    for (let col = startDeco + 2; col < endDeco; col += 6) {
+      const sx = col * U - camX + U / 2;
+      if (sx < -U || sx > canvas.width + U) continue;
+      ctx.fillStyle = `hsla(${hue}, 60%, 50%, ${0.06 + bp * 0.04})`;
+      ctx.beginPath();
+      ctx.arc(sx, groundY + U * 1.5, 2 + bp, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Thick glowing ground top line
     const glowBlur = 12 + bp * 18;
-    ctx.strokeStyle = '#00e5ff';
+    ctx.strokeStyle = `hsl(${hue}, 80%, 55%)`;
     ctx.lineWidth = 3 + bp * 2;
-    ctx.shadowColor = '#00e5ff';
+    ctx.shadowColor = `hsl(${hue}, 80%, 55%)`;
     ctx.shadowBlur = glowBlur;
     for (const seg of level.groundSegments) {
       const sx = seg.startPx - camX;
@@ -119,9 +168,9 @@ export class Renderer {
     ctx.shadowBlur = 0;
 
     // Gap edge lines
-    ctx.strokeStyle = '#00e5ff';
+    ctx.strokeStyle = `hsl(${hue}, 80%, 55%)`;
     ctx.lineWidth = 1.5;
-    ctx.shadowColor = '#00e5ff';
+    ctx.shadowColor = `hsl(${hue}, 80%, 55%)`;
     ctx.shadowBlur = 8;
     for (const gap of level.gaps) {
       const lx = gap.startPx - camX;
@@ -142,63 +191,123 @@ export class Renderer {
     ctx.shadowBlur = 0;
   }
 
-  // --- 3D beveled blocks with inner detail ---
+  // --- Decorative background blocks (no collision, low opacity) ---
+
+  private drawDecoBlocks(camX: number, groundY: number): void {
+    const { ctx, canvas } = this;
+    const hue = this.sectionHue;
+    const bp = this.beatPulse;
+
+    const startCol = Math.floor(camX / U) - 2;
+    const endCol = startCol + Math.ceil(canvas.width / U) + 4;
+
+    // Chevron patterns at regular intervals
+    for (let col = startCol; col < endCol; col++) {
+      const sx = col * U - camX;
+      // Outlined deco blocks above play area using deterministic pattern
+      const seed = ((col * 7919) & 0xFFFF);
+      if (seed % 13 !== 0) continue; // ~1 in 13 columns get a deco block
+
+      const row = (seed % 5) + 1; // rows 1-5 above ground
+      const sy = groundY - row * U;
+
+      // Outlined block (no fill)
+      const alpha = 0.04 + bp * 0.02;
+      ctx.strokeStyle = `hsla(${hue + 40}, 50%, 45%, ${alpha})`;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(sx + 3, sy + 3, U - 6, U - 6);
+    }
+
+    // Chevron/V-shape decorations every ~30 blocks
+    for (let col = startCol; col < endCol; col++) {
+      if (((col + 5) * 3571) % 30 !== 0) continue;
+      const sx = col * U - camX;
+      const cy = groundY - U * 4;
+      const alpha = 0.03 + bp * 0.015;
+
+      ctx.strokeStyle = `hsla(${hue}, 40%, 50%, ${alpha})`;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(sx - U * 1.5, cy + U);
+      ctx.lineTo(sx, cy - U);
+      ctx.lineTo(sx + U * 1.5, cy + U);
+      ctx.stroke();
+    }
+  }
+
+  // --- Blocks: 3D beveled with variety (some outlined, some glowing) ---
 
   private drawBlocks(camX: number, groundY: number, level: Level): void {
     const { ctx, canvas } = this;
+    const hue = this.sectionHue;
+    const bp = this.beatPulse;
 
-    for (const block of level.blocks) {
+    for (let i = 0; i < level.blocks.length; i++) {
+      const block = level.blocks[i]!;
       const sx = block.x - camX;
       if (sx > canvas.width + U) break;
       if (sx + U < -U) continue;
 
       const sy = groundY - block.y - U;
+      const variety = (i * 7 + Math.floor(block.x / U)) % 5;
 
-      // Dark fill
-      ctx.fillStyle = '#0a1628';
-      ctx.fillRect(sx, sy, U, U);
+      if (variety === 4) {
+        // Glowing block (every 5th-ish block)
+        ctx.fillStyle = `hsla(${hue}, 60%, 20%, 0.9)`;
+        ctx.fillRect(sx, sy, U, U);
+        ctx.shadowColor = `hsl(${hue}, 70%, 50%)`;
+        ctx.shadowBlur = 8 + bp * 6;
+        ctx.strokeStyle = `hsl(${hue}, 70%, 50%)`;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(sx + 1, sy + 1, U - 2, U - 2);
+        ctx.shadowBlur = 0;
+        // Inner highlight
+        ctx.strokeStyle = `hsla(${hue}, 60%, 60%, 0.2)`;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(sx + 5, sy + 5, U - 10, U - 10);
+      } else {
+        // Standard 3D beveled block
+        ctx.fillStyle = '#0a1628';
+        ctx.fillRect(sx, sy, U, U);
 
-      // Light top edge (bevel highlight)
-      ctx.fillStyle = '#2a5080';
-      ctx.fillRect(sx, sy, U, 3);
+        // Light top + left edges
+        ctx.fillStyle = '#2a5080';
+        ctx.fillRect(sx, sy, U, 3);
+        ctx.fillStyle = '#1e4070';
+        ctx.fillRect(sx, sy, 3, U);
 
-      // Light left edge
-      ctx.fillStyle = '#1e4070';
-      ctx.fillRect(sx, sy, 3, U);
+        // Dark bottom + right edges
+        ctx.fillStyle = '#040a14';
+        ctx.fillRect(sx, sy + U - 3, U, 3);
+        ctx.fillStyle = '#060c1a';
+        ctx.fillRect(sx + U - 3, sy, 3, U);
 
-      // Dark bottom edge (bevel shadow)
-      ctx.fillStyle = '#040a14';
-      ctx.fillRect(sx, sy + U - 3, U, 3);
+        // Inner cross detail
+        ctx.strokeStyle = 'rgba(60, 120, 200, 0.2)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(sx + 7, sy + U / 2);
+        ctx.lineTo(sx + U - 7, sy + U / 2);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(sx + U / 2, sy + 7);
+        ctx.lineTo(sx + U / 2, sy + U - 7);
+        ctx.stroke();
 
-      // Dark right edge
-      ctx.fillStyle = '#060c1a';
-      ctx.fillRect(sx + U - 3, sy, 3, U);
+        // Inner border
+        ctx.strokeStyle = 'rgba(80, 150, 220, 0.15)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(sx + 5, sy + 5, U - 10, U - 10);
 
-      // Inner cross detail (like original GD blocks)
-      ctx.strokeStyle = 'rgba(60, 120, 200, 0.2)';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(sx + 7, sy + U / 2);
-      ctx.lineTo(sx + U - 7, sy + U / 2);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(sx + U / 2, sy + 7);
-      ctx.lineTo(sx + U / 2, sy + U - 7);
-      ctx.stroke();
-
-      // Inner border
-      ctx.strokeStyle = 'rgba(80, 150, 220, 0.15)';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(sx + 5, sy + 5, U - 10, U - 10);
-
-      // Outer neon border
-      ctx.strokeStyle = '#2850a0';
-      ctx.lineWidth = 1.5;
-      ctx.strokeRect(sx + 0.5, sy + 0.5, U - 1, U - 1);
+        // Outer border
+        ctx.strokeStyle = '#2850a0';
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(sx + 0.5, sy + 0.5, U - 1, U - 1);
+      }
     }
   }
 
-  // --- Sharp full-size spikes with bright glow ---
+  // --- Spikes with glow ---
 
   private drawSpikes(camX: number, groundY: number, level: Level): void {
     const { ctx, canvas } = this;
@@ -211,11 +320,9 @@ export class Renderer {
       const baseY = groundY - spike.y;
       const tipY = groundY - spike.y - U;
 
-      // Glow
       ctx.shadowColor = '#ff3333';
       ctx.shadowBlur = 10;
 
-      // Full-size outer triangle (fills block)
       ctx.fillStyle = '#ffffff';
       ctx.beginPath();
       ctx.moveTo(sx + U / 2, tipY);
@@ -224,7 +331,6 @@ export class Renderer {
       ctx.closePath();
       ctx.fill();
 
-      // Inner red triangle for depth
       ctx.shadowBlur = 0;
       ctx.fillStyle = '#dd2222';
       ctx.beginPath();
@@ -234,7 +340,6 @@ export class Renderer {
       ctx.closePath();
       ctx.fill();
 
-      // Bright edge lines
       ctx.strokeStyle = 'rgba(255, 100, 100, 0.6)';
       ctx.lineWidth = 1;
       ctx.beginPath();
@@ -257,24 +362,20 @@ export class Renderer {
       const sx = pad.x - camX;
       if (sx > canvas.width + U) break;
       if (sx + U < -U) continue;
-
       const sy = groundY - pad.y - padH;
 
       ctx.shadowColor = '#ffdd00';
       ctx.shadowBlur = 12 + bp * 14;
       ctx.fillStyle = `rgb(255, ${221 + bp * 34}, ${bp * 60})`;
       ctx.fillRect(sx + 2, sy, U - 4, padH);
-
       ctx.shadowBlur = 0;
       ctx.fillStyle = '#cc9900';
       ctx.fillRect(sx + 5, sy + 2, U - 10, padH - 6);
-
       ctx.fillStyle = '#ffffff';
       ctx.beginPath();
-      const cx = sx + U / 2;
-      ctx.moveTo(cx, sy + 3);
-      ctx.lineTo(cx + 7, sy + padH - 4);
-      ctx.lineTo(cx - 7, sy + padH - 4);
+      ctx.moveTo(sx + U / 2, sy + 3);
+      ctx.lineTo(sx + U / 2 + 7, sy + padH - 4);
+      ctx.lineTo(sx + U / 2 - 7, sy + padH - 4);
       ctx.closePath();
       ctx.fill();
     }
@@ -296,14 +397,12 @@ export class Renderer {
       const used = usedOrbs.has(i);
       const cx = sx + U / 2;
       const cy = groundY - orb.y - U / 2;
-
       const pulse = (Math.sin(now * 0.004 + i) * 0.1 + 1) + bp * 0.2;
       const radius = (U * 0.35) * pulse;
       const ringRadius = (U * 0.5) * pulse;
-      const alpha = used ? 0.2 : 1;
 
       ctx.save();
-      ctx.globalAlpha = alpha;
+      ctx.globalAlpha = used ? 0.2 : 1;
 
       ctx.strokeStyle = '#ffdd00';
       ctx.lineWidth = 2.5 + bp * 2;
@@ -342,7 +441,6 @@ export class Renderer {
       const sx = portal.x - camX - portalW / 2;
       if (sx > canvas.width + portalW) continue;
       if (sx + portalW < -portalW) continue;
-
       const sy = groundY - portalH;
 
       const grad = ctx.createLinearGradient(sx, sy, sx, sy + portalH);
@@ -355,7 +453,6 @@ export class Renderer {
       ctx.shadowBlur = 22 + bp * 16;
       ctx.fillStyle = grad;
       ctx.fillRect(sx, sy, portalW, portalH);
-
       ctx.shadowBlur = 0;
       ctx.strokeStyle = `rgba(255, 255, 255, ${0.5 + bp * 0.3})`;
       ctx.lineWidth = 2;
@@ -367,9 +464,7 @@ export class Renderer {
         const t = (now * 0.002 + p * 1.2) % 1;
         const px = sx + portalW * (0.2 + Math.sin(now * 0.001 + p * 2) * 0.3 + 0.3);
         const py = sy + portalH * t;
-        const pAlpha = Math.sin(t * Math.PI) * 0.8;
-
-        ctx.fillStyle = `rgba(255, 255, 255, ${pAlpha})`;
+        ctx.fillStyle = `rgba(255, 255, 255, ${Math.sin(t * Math.PI) * 0.8})`;
         ctx.beginPath();
         ctx.arc(px, py, 2 + Math.sin(now * 0.003 + p), 0, Math.PI * 2);
         ctx.fill();
@@ -378,9 +473,9 @@ export class Renderer {
     }
   }
 
-  // --- Ceiling ---
+  // --- Ceiling (gravity flip) ---
 
-  private drawCeiling(groundY: number): void {
+  private drawGravityCeiling(groundY: number): void {
     const { ctx, canvas } = this;
     const ceilScreenY = groundY - CONFIG.CEILING_HEIGHT;
     const bp = this.beatPulse;
@@ -399,102 +494,78 @@ export class Renderer {
     ctx.shadowBlur = 0;
   }
 
-  // --- Player trail: longer, brighter, with glow ---
+  // --- Player trail ---
 
   private drawTrail(camX: number, groundY: number, player: Player): void {
     const { ctx } = this;
     const S = CONFIG.PLAYER_SIZE;
-    const trail = player.trail;
 
-    for (let i = 0; i < trail.length; i++) {
-      const pos = trail[i]!;
-      const t = (i + 1) / (trail.length + 1);
-      const alpha = t * 0.4;
+    for (let i = 0; i < player.trail.length; i++) {
+      const pos = player.trail[i]!;
+      const t = (i + 1) / (player.trail.length + 1);
       const sx = pos.x - camX;
       const sy = groundY - pos.y - S;
 
       ctx.save();
-      ctx.globalAlpha = alpha;
+      ctx.globalAlpha = t * 0.4;
       ctx.translate(sx + S / 2, sy + S / 2);
       if (player.gravityFlipped) ctx.scale(1, -1);
       ctx.rotate(pos.rotation * Math.PI / 180);
-
-      // Glow on trail cubes
       ctx.shadowColor = '#00ff00';
       ctx.shadowBlur = 6 + t * 8;
       ctx.fillStyle = '#00ff00';
       ctx.fillRect(-S / 2, -S / 2, S, S);
       ctx.shadowBlur = 0;
-
       ctx.restore();
     }
   }
 
-  // --- Player cube: bright neon green, strong glow, face ---
+  // --- Player cube ---
 
   private drawPlayer(camX: number, groundY: number, player: Player): void {
     const { ctx } = this;
     const S = CONFIG.PLAYER_SIZE;
-    // Visual size slightly larger for prominence
     const VS = S + 6;
     const sx = player.x - camX;
     const sy = groundY - player.y - S;
 
     ctx.save();
     ctx.translate(sx + S / 2, sy + S / 2);
-
-    if (player.gravityFlipped) {
-      ctx.scale(1, -1);
-    }
-
+    if (player.gravityFlipped) ctx.scale(1, -1);
     ctx.rotate(player.rotation * Math.PI / 180);
 
-    // Strong outer glow halo
     ctx.shadowColor = '#00ff00';
     ctx.shadowBlur = 28;
-
-    // Body — bright neon green
     ctx.fillStyle = '#00ff00';
     ctx.fillRect(-VS / 2, -VS / 2, VS, VS);
-
-    // Double-draw for stronger glow
     ctx.shadowBlur = 16;
     ctx.fillRect(-VS / 2, -VS / 2, VS, VS);
     ctx.shadowBlur = 0;
 
-    // Light edge (top + left)
+    // Beveled edges
     ctx.fillStyle = '#66ff66';
     ctx.fillRect(-VS / 2, -VS / 2, VS, 2);
     ctx.fillRect(-VS / 2, -VS / 2, 2, VS);
-
-    // Dark edge (bottom + right)
     ctx.fillStyle = '#009900';
     ctx.fillRect(-VS / 2, VS / 2 - 2, VS, 2);
     ctx.fillRect(VS / 2 - 2, -VS / 2, 2, VS);
 
-    // Border
     ctx.strokeStyle = '#80ffa0';
     ctx.lineWidth = 2;
     ctx.strokeRect(-VS / 2, -VS / 2, VS, VS);
 
-    // Eye — white square with black pupil (GD style)
-    ctx.fillStyle = '#ffffff';
+    // Eye
     const eyeW = VS * 0.32;
     const eyeH = VS * 0.28;
     const eyeX = VS * 0.04;
     const eyeY = -VS * 0.04;
+    ctx.fillStyle = '#ffffff';
     ctx.fillRect(eyeX - eyeW / 2, eyeY - eyeH / 2, eyeW, eyeH);
-
-    // Eye border
     ctx.strokeStyle = '#000000';
     ctx.lineWidth = 1.5;
     ctx.strokeRect(eyeX - eyeW / 2, eyeY - eyeH / 2, eyeW, eyeH);
-
-    // Pupil
     ctx.fillStyle = '#000000';
-    const pupilW = eyeW * 0.45;
-    const pupilH = eyeH * 0.55;
-    ctx.fillRect(eyeX + eyeW * 0.08, eyeY - pupilH / 2, pupilW, pupilH);
+    ctx.fillRect(eyeX + eyeW * 0.08, eyeY - eyeH * 0.275, eyeW * 0.45, eyeH * 0.55);
 
     ctx.restore();
   }
@@ -512,29 +583,25 @@ export class Renderer {
       ctx.save();
       ctx.translate(sx + p.size / 2, sy + p.size / 2);
       ctx.rotate(p.rot);
-
       ctx.fillStyle = `rgba(${p.r}, ${p.g}, ${p.b}, ${alpha})`;
       ctx.shadowColor = `rgba(${p.r}, ${p.g}, ${p.b}, ${alpha * 0.5})`;
       ctx.shadowBlur = 8;
       ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
       ctx.shadowBlur = 0;
-
       ctx.restore();
     }
   }
 
-  // --- HUD: full-width thin progress bar at very top ---
+  // --- HUD ---
 
   private drawHUD(progress: number, attempts: number): void {
     const { ctx, canvas } = this;
     const w = canvas.width;
-
-    // Full-width progress bar at very top — dark track
     const barH = 4;
+
     ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
     ctx.fillRect(0, 0, w, barH);
 
-    // Green fill
     const fillW = Math.min(progress, 1) * w;
     ctx.fillStyle = '#00ff00';
     ctx.shadowColor = '#00ff00';
@@ -542,14 +609,12 @@ export class Renderer {
     ctx.fillRect(0, 0, fillW, barH);
     ctx.shadowBlur = 0;
 
-    // Percentage on right
     ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
     ctx.font = '12px Arial, sans-serif';
     ctx.textAlign = 'right';
     ctx.textBaseline = 'top';
     ctx.fillText(`${Math.floor(Math.min(progress, 1) * 100)}%`, w - 8, barH + 3);
 
-    // Attempt counter on left
     ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
     ctx.font = '13px Arial, sans-serif';
     ctx.textAlign = 'left';
@@ -557,7 +622,7 @@ export class Renderer {
     ctx.fillText(`Attempt ${attempts}`, 10, barH + 3);
   }
 
-  // --- Menu screen ---
+  // --- Menu ---
 
   renderMenu(menuTime: number): void {
     const { ctx, canvas } = this;
@@ -570,7 +635,6 @@ export class Renderer {
     grad.addColorStop(1, '#0e0025');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, w, h);
-
     this.background.render(ctx, menuTime * 0.8, w, h);
 
     ctx.save();
@@ -594,8 +658,8 @@ export class Renderer {
     ctx.shadowColor = '#00e5ff';
     ctx.shadowBlur = 40;
     ctx.fillStyle = '#00e5ff';
-    const titleSize = Math.floor(h / 7);
-    ctx.font = `bold ${titleSize}px 'Arial Black', Arial, sans-serif`;
+    const ts = Math.floor(h / 7);
+    ctx.font = `bold ${ts}px 'Arial Black', Arial, sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('GEOMETRY DASH', w / 2, h * 0.33);
@@ -625,7 +689,7 @@ export class Renderer {
     ctx.fillText('Space / Click / Tap to jump', w / 2, h * 0.82);
   }
 
-  // --- Gameplay rendering ---
+  // --- Gameplay ---
 
   renderGameplay(
     camera: Camera,
@@ -642,7 +706,7 @@ export class Renderer {
     const camX = camera.x;
 
     this.beatPulse = Math.max(0, 1 - beatProgress * 3.5);
-    this.levelProgress = progress;
+    this.sectionHue = this.computeSectionHue(progress);
 
     this.drawGradient();
     this.background.render(ctx, camX, canvas.width, canvas.height, beatProgress, progress);
@@ -650,6 +714,8 @@ export class Renderer {
     ctx.save();
     ctx.translate(camera.shakeX, camera.shakeY);
 
+    this.drawCeilingFrame(groundY);
+    this.drawDecoBlocks(camX, groundY);
     this.drawGround(camX, groundY, level);
     this.drawBlocks(camX, groundY, level);
     this.drawSpikes(camX, groundY, level);
@@ -658,7 +724,7 @@ export class Renderer {
     this.drawGravityPortals(camX, groundY, level);
 
     if (player.gravityFlipped) {
-      this.drawCeiling(groundY);
+      this.drawGravityCeiling(groundY);
     }
 
     if (player.alive) {
@@ -673,24 +739,18 @@ export class Renderer {
     this.drawHUD(progress, attempts);
   }
 
-  // --- Death: white flash, dim ---
+  // --- Death overlay ---
 
   renderDeathOverlay(deathTimer: number): void {
     const { ctx, canvas } = this;
-    const w = canvas.width;
-    const h = canvas.height;
     const elapsed = CONFIG.DEATH_PAUSE_TICKS - deathTimer;
 
-    // Strong white flash first 6 ticks
     if (elapsed < 6) {
-      const flashAlpha = Math.max(0, (1 - elapsed / 6) * 0.7);
-      ctx.fillStyle = `rgba(255, 255, 255, ${flashAlpha})`;
-      ctx.fillRect(0, 0, w, h);
+      ctx.fillStyle = `rgba(255, 255, 255, ${Math.max(0, (1 - elapsed / 6) * 0.7)})`;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
-
-    // Background dim
     ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
-    ctx.fillRect(0, 0, w, h);
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
   }
 
   // --- Complete overlay ---
@@ -700,14 +760,12 @@ export class Renderer {
     const w = canvas.width;
     const h = canvas.height;
 
-    const alpha = Math.min(0.5, completeTime * 0.008);
-    ctx.fillStyle = `rgba(0, 0, 0, ${alpha})`;
+    ctx.fillStyle = `rgba(0, 0, 0, ${Math.min(0.5, completeTime * 0.008)})`;
     ctx.fillRect(0, 0, w, h);
 
     if (completeTime > 15) {
-      const textAlpha = Math.min(1, (completeTime - 15) * 0.04);
       ctx.save();
-      ctx.globalAlpha = textAlpha;
+      ctx.globalAlpha = Math.min(1, (completeTime - 15) * 0.04);
       ctx.shadowColor = '#ffdd00';
       ctx.shadowBlur = 30;
       ctx.fillStyle = '#ffdd00';
@@ -723,10 +781,8 @@ export class Renderer {
         ctx.textAlign = 'center';
         ctx.fillText('100%', w / 2, h * 0.52);
       }
-
       if (completeTime > 90) {
-        const pulse = Math.sin(completeTime * 0.06) * 0.3 + 0.7;
-        ctx.globalAlpha = pulse;
+        ctx.globalAlpha = Math.sin(completeTime * 0.06) * 0.3 + 0.7;
         ctx.fillStyle = '#ffffff';
         ctx.font = `${Math.floor(h / 24)}px Arial, sans-serif`;
         ctx.fillText('Click to continue', w / 2, h * 0.68);

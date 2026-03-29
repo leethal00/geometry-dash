@@ -84,7 +84,7 @@ export class Background {
     levelProgress: number = 0,
   ): void {
     const beatPulse = Math.max(0, 1 - beatProgress * 3.5);
-    const hue = 270 + levelProgress * 80;
+    const hue = (200 + levelProgress * 240) % 360;
 
     // --- Giant slowly rotating diamond (background centerpiece) ---
     this.drawGiantDiamond(ctx, cameraX, w, h, hue, beatPulse);
