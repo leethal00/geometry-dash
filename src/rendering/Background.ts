@@ -295,6 +295,9 @@ export class Background {
     // --- Light beams ---
     this.drawLightBeams(ctx, w, h, theme, beatPulse, levelProgress);
 
+    // Rhythm-synced pulsing rings
+    this.drawBeatRings(ctx, w, h, hue, beatPulse, beatProgress);
+
     // 45 floating particles
     this.renderFloaters(ctx, cameraX, w, h, hue, beatPulse);
 
@@ -498,9 +501,9 @@ export class Background {
     const cx = w * 0.8;
     const cy = h * 0.25;
     const baseRadius = Math.min(w, h) * 0.12;
-    const radius = baseRadius + beatPulse * 6;
-    const rotation = now * 0.15;
-    const alpha = 0.03 + beatPulse * 0.02;
+    const radius = baseRadius + beatPulse * 12;
+    const rotation = now * 0.15 + beatPulse * 0.3;
+    const alpha = 0.03 + beatPulse * 0.035;
 
     ctx.save();
     ctx.translate(cx, cy);
@@ -580,6 +583,47 @@ export class Background {
     ctx.restore();
   }
 
+  // --- Rhythm-synced pulsing rings ---
+
+  private drawBeatRings(
+    ctx: CanvasRenderingContext2D,
+    w: number,
+    h: number,
+    hue: number,
+    beatPulse: number,
+    beatProgress: number,
+  ): void {
+    if (beatProgress === 0) return;
+
+    // Expanding ring on each beat
+    const ringExpand = beatProgress; // 0 at beat start, 1 at next beat
+    const ringAlpha = Math.max(0, (1 - ringExpand) * (0.06 + beatPulse * 0.03));
+    if (ringAlpha < 0.003) return;
+
+    const cx = w * 0.35;
+    const cy = h * 0.5;
+    const maxRadius = Math.min(w, h) * (0.5 + beatPulse * 0.05);
+    const radius = maxRadius * (0.1 + ringExpand * 0.9);
+
+    ctx.strokeStyle = `hsla(${hue + 60}, 60%, ${55 + beatPulse * 10}%, ${ringAlpha})`;
+    ctx.lineWidth = 2 + (1 - ringExpand) * 3;
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Second ring offset by half a beat
+    const ring2Phase = (beatProgress + 0.5) % 1;
+    const ring2Alpha = Math.max(0, (1 - ring2Phase) * 0.04);
+    if (ring2Alpha > 0.003) {
+      const r2 = maxRadius * (0.1 + ring2Phase * 0.9);
+      ctx.strokeStyle = `hsla(${hue + 90}, 50%, 50%, ${ring2Alpha})`;
+      ctx.lineWidth = 1.5 + (1 - ring2Phase) * 2;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r2, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+
   private drawGiantDiamond(
     ctx: CanvasRenderingContext2D,
     camX: number,
@@ -592,8 +636,8 @@ export class Background {
     const rotation = now * 0.08 + camX * 0.0001;
     const cx = w * 0.55;
     const cy = h * 0.35;
-    const size = Math.min(w, h) * 0.38 + beatPulse * 8;
-    const alpha = 0.035 + beatPulse * 0.02;
+    const size = Math.min(w, h) * 0.38 + beatPulse * 14;
+    const alpha = 0.035 + beatPulse * 0.035;
 
     ctx.save();
     ctx.translate(cx, cy);

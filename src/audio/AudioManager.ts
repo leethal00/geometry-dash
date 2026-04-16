@@ -7,14 +7,49 @@
 export class AudioManager {
   private ctx: AudioContext | null = null;
   private masterGain: GainNode | null = null;
+  private analyser: AnalyserNode | null = null;
+  private analyserData: Uint8Array<ArrayBuffer> | null = null;
   private startTime = 0;
   private _playing = false;
 
   readonly BPM = 128;
   readonly beatDuration = 60 / 128; // ~0.469s per beat
 
+  /** Audio energy level 0-1 (smoothed RMS from analyser) */
+  private _energy = 0;
+  /** Bass energy level 0-1 (low frequency band) */
+  private _bassEnergy = 0;
+  /** Whether a bass drop is currently active */
+  private _bassDropActive = false;
+  /** Bass drop intensity 0-1 (decays after trigger) */
+  private _bassDropIntensity = 0;
+  /** Cooldown to prevent rapid bass drop triggers */
+  private _bassDropCooldown = 0;
+  /** Previous bass energy for drop detection */
+  private _prevBassEnergy = 0;
+
   get playing(): boolean {
     return this._playing;
+  }
+
+  /** Overall audio energy 0-1 */
+  get energy(): number {
+    return this._energy;
+  }
+
+  /** Bass frequency energy 0-1 */
+  get bassEnergy(): number {
+    return this._bassEnergy;
+  }
+
+  /** Bass drop intensity 0-1, high when bass drop just hit */
+  get bassDropIntensity(): number {
+    return this._bassDropIntensity;
+  }
+
+  /** Whether a bass drop is currently active */
+  get bassDropActive(): boolean {
+    return this._bassDropActive;
   }
 
   /** Continuous beat counter (e.g. 4.75 = three quarters through beat 4) */
@@ -28,6 +63,68 @@ export class AudioManager {
   get beatProgress(): number {
     const b = this.currentBeat;
     return b - Math.floor(b);
+  }
+
+  /** Update audio analysis — call once per frame */
+  updateAnalysis(): void {
+    if (!this._playing || !this.analyser || !this.analyserData) {
+      this._energy = 0;
+      this._bassEnergy = 0;
+      this._bassDropIntensity *= 0.92;
+      if (this._bassDropIntensity < 0.01) {
+        this._bassDropIntensity = 0;
+        this._bassDropActive = false;
+      }
+      return;
+    }
+
+    this.analyser.getByteFrequencyData(this.analyserData);
+    const data = this.analyserData;
+    const len = data.length;
+
+    // Overall RMS energy
+    let sum = 0;
+    for (let i = 0; i < len; i++) {
+      const v = data[i]! / 255;
+      sum += v * v;
+    }
+    this._energy = Math.sqrt(sum / len);
+
+    // Bass energy (first ~15% of frequency bins)
+    const bassEnd = Math.floor(len * 0.15);
+    let bassSum = 0;
+    for (let i = 0; i < bassEnd; i++) {
+      const v = data[i]! / 255;
+      bassSum += v * v;
+    }
+    this._bassEnergy = Math.sqrt(bassSum / bassEnd);
+
+    // Bass drop detection: sudden spike in bass energy
+    if (this._bassDropCooldown > 0) {
+      this._bassDropCooldown--;
+    } else {
+      const bassJump = this._bassEnergy - this._prevBassEnergy;
+      // Trigger bass drop on strong kick beats (beat 0 and 2 of each measure)
+      const beat = this.currentBeat;
+      const inMeasure = beat % 4;
+      const nearKick = (inMeasure < 0.15 || (inMeasure > 1.95 && inMeasure < 2.15));
+      if (bassJump > 0.15 && this._bassEnergy > 0.4 && nearKick) {
+        this._bassDropActive = true;
+        this._bassDropIntensity = 1;
+        this._bassDropCooldown = 30; // ~0.5s at 60fps
+      }
+    }
+
+    this._prevBassEnergy = this._bassEnergy;
+
+    // Decay bass drop
+    if (this._bassDropIntensity > 0) {
+      this._bassDropIntensity *= 0.92;
+      if (this._bassDropIntensity < 0.01) {
+        this._bassDropIntensity = 0;
+        this._bassDropActive = false;
+      }
+    }
   }
 
   start(): void {
@@ -50,10 +147,16 @@ export class AudioManager {
       } catch { /* ignore */ }
     }
 
-    // Fresh output chain
+    // Fresh output chain with analyser
     this.masterGain = this.ctx.createGain();
     this.masterGain.gain.setValueAtTime(0.55, this.ctx.currentTime);
-    this.masterGain.connect(this.ctx.destination);
+
+    this.analyser = this.ctx.createAnalyser();
+    this.analyser.fftSize = 256;
+    this.analyserData = new Uint8Array(this.analyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
+
+    this.masterGain.connect(this.analyser);
+    this.analyser.connect(this.ctx.destination);
 
     this.startTime = this.ctx.currentTime + 0.02;
     this._playing = true;

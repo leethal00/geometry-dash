@@ -20,6 +20,15 @@ export class Renderer {
   private modeFlashG = 0;
   private modeFlashB = 0;
 
+  /** Audio energy level 0-1 for dynamic color intensity */
+  private audioEnergy = 0;
+  /** Bass drop intensity 0-1 */
+  private bassDropIntensity = 0;
+  /** Shimmer animation phase */
+  private shimmerPhase = 0;
+  /** Menu transition alpha (fade in/out) */
+  private menuAlpha = 0;
+
   constructor(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D) {
     this.canvas = canvas;
     this.ctx = ctx;
@@ -45,17 +54,24 @@ export class Renderer {
     const { ctx, canvas } = this;
     const hue = this.sectionHue;
     const bp = this.beatPulse;
+    const energy = this.audioEnergy;
+    const bassDrop = this.bassDropIntensity;
+
+    // Dynamic saturation/lightness from audio energy
+    const satBoost = energy * 15;
+    const lightBoost = energy * 3 + bassDrop * 2;
 
     const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
-    grad.addColorStop(0, `hsl(${hue}, 70%, ${2 + bp * 3}%)`);
-    grad.addColorStop(0.5, `hsl(${hue + 15}, 80%, ${4 + bp * 4}%)`);
-    grad.addColorStop(1, `hsl(${hue + 30}, 75%, ${6 + bp * 3}%)`);
+    grad.addColorStop(0, `hsl(${hue}, ${70 + satBoost}%, ${2 + bp * 3 + lightBoost}%)`);
+    grad.addColorStop(0.5, `hsl(${hue + 15}, ${80 + satBoost}%, ${4 + bp * 4 + lightBoost}%)`);
+    grad.addColorStop(1, `hsl(${hue + 30}, ${75 + satBoost}%, ${6 + bp * 3 + lightBoost}%)`);
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Beat flash — whole screen brightens
+    // Beat flash — whole screen brightens (enhanced with energy)
     if (bp > 0) {
-      ctx.fillStyle = `rgba(255, 255, 255, ${bp * 0.05})`;
+      const flashIntensity = bp * (0.05 + energy * 0.03);
+      ctx.fillStyle = `rgba(255, 255, 255, ${flashIntensity})`;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
   }
@@ -1150,29 +1166,136 @@ export class Renderer {
   private drawHUD(progress: number, attempts: number): void {
     const { ctx, canvas } = this;
     const w = canvas.width;
-    const barH = 4;
+    const barH = 6;
+    const bp = this.beatPulse;
+    const hue = this.sectionHue;
+    const energy = this.audioEnergy;
+    const clampedProgress = Math.min(progress, 1);
 
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
+    // --- Progress bar background ---
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.06)';
     ctx.fillRect(0, 0, w, barH);
 
-    const fillW = Math.min(progress, 1) * w;
-    ctx.fillStyle = '#00ff00';
-    ctx.shadowColor = '#00ff00';
-    ctx.shadowBlur = 4;
-    ctx.fillRect(0, 0, fillW, barH);
-    ctx.shadowBlur = 0;
+    // --- Gradient fill ---
+    const fillW = clampedProgress * w;
+    if (fillW > 0) {
+      const grad = ctx.createLinearGradient(0, 0, fillW, 0);
+      grad.addColorStop(0, `hsl(${hue}, 80%, ${45 + energy * 15}%)`);
+      grad.addColorStop(0.5, `hsl(${hue + 40}, 90%, ${55 + energy * 15}%)`);
+      grad.addColorStop(1, `hsl(${hue + 80}, 85%, ${50 + energy * 15}%)`);
+      ctx.fillStyle = grad;
+      ctx.shadowColor = `hsl(${hue + 40}, 90%, 55%)`;
+      ctx.shadowBlur = 6 + bp * 8;
+      ctx.fillRect(0, 0, fillW, barH);
+      ctx.shadowBlur = 0;
 
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
-    ctx.font = '12px Arial, sans-serif';
+      // --- Shimmer effect (moving bright highlight) ---
+      const shimmerX = ((this.shimmerPhase * 200) % (w + 120)) - 60;
+      if (shimmerX < fillW) {
+        const shimmerGrad = ctx.createLinearGradient(shimmerX - 40, 0, shimmerX + 40, 0);
+        shimmerGrad.addColorStop(0, 'rgba(255, 255, 255, 0)');
+        shimmerGrad.addColorStop(0.5, `rgba(255, 255, 255, ${0.25 + bp * 0.15})`);
+        shimmerGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        ctx.fillStyle = shimmerGrad;
+        ctx.fillRect(Math.max(0, shimmerX - 40), 0, 80, barH);
+      }
+
+      // --- Bright edge at fill position ---
+      ctx.fillStyle = `rgba(255, 255, 255, ${0.6 + bp * 0.3})`;
+      ctx.fillRect(Math.max(0, fillW - 2), 0, 2, barH);
+    }
+
+    // --- Milestone markers at 25%, 50%, 75% ---
+    for (const milestone of [0.25, 0.5, 0.75]) {
+      const mx = milestone * w;
+      const reached = clampedProgress >= milestone;
+      ctx.fillStyle = reached
+        ? `hsla(${hue + 40}, 80%, 70%, ${0.7 + bp * 0.2})`
+        : 'rgba(255, 255, 255, 0.15)';
+      // Small diamond marker
+      ctx.beginPath();
+      ctx.moveTo(mx, 0);
+      ctx.lineTo(mx + 4, barH / 2);
+      ctx.lineTo(mx, barH);
+      ctx.lineTo(mx - 4, barH / 2);
+      ctx.closePath();
+      ctx.fill();
+      if (reached) {
+        ctx.shadowColor = `hsl(${hue + 40}, 80%, 70%)`;
+        ctx.shadowBlur = 4;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      }
+    }
+
+    // --- Percentage text ---
+    ctx.fillStyle = `rgba(255, 255, 255, ${0.6 + bp * 0.15})`;
+    ctx.font = 'bold 12px Arial, sans-serif';
     ctx.textAlign = 'right';
     ctx.textBaseline = 'top';
-    ctx.fillText(`${Math.floor(Math.min(progress, 1) * 100)}%`, w - 8, barH + 3);
+    ctx.fillText(`${Math.floor(clampedProgress * 100)}%`, w - 8, barH + 4);
 
+    // --- Attempt counter ---
     ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
     ctx.font = '13px Arial, sans-serif';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
-    ctx.fillText(`Attempt ${attempts}`, 10, barH + 3);
+    ctx.fillText(`Attempt ${attempts}`, 10, barH + 4);
+  }
+
+  // --- Level name fade-in display ---
+
+  private drawLevelName(timer: number): void {
+    const { ctx, canvas } = this;
+    const w = canvas.width;
+    const h = canvas.height;
+
+    // Fade in (0-60), hold (60-120), fade out (120-180)
+    let alpha: number;
+    if (timer < 60) {
+      alpha = timer / 60;
+    } else if (timer < 120) {
+      alpha = 1;
+    } else {
+      alpha = 1 - (timer - 120) / 60;
+    }
+    alpha = Math.max(0, Math.min(1, alpha));
+
+    // Slide up slightly during fade in
+    const slideY = timer < 60 ? (1 - timer / 60) * 15 : 0;
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+
+    // Level title
+    ctx.shadowColor = '#00e5ff';
+    ctx.shadowBlur = 20 * alpha;
+    ctx.fillStyle = '#00e5ff';
+    const titleSize = Math.floor(h / 12);
+    ctx.font = `bold ${titleSize}px 'Arial Black', Arial, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('First Flight', w / 2, h * 0.42 + slideY);
+    ctx.shadowBlur = 0;
+
+    // Subtitle line
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+    const subSize = Math.floor(h / 28);
+    ctx.font = `${subSize}px Arial, sans-serif`;
+    ctx.fillText('by Paperclip Games', w / 2, h * 0.42 + titleSize * 0.8 + slideY);
+
+    // Decorative line under title
+    const lineW = w * 0.15;
+    const lineAlpha = alpha * 0.4;
+    const lineY = h * 0.42 + titleSize * 1.3 + slideY;
+    const lineGrad = ctx.createLinearGradient(w / 2 - lineW, lineY, w / 2 + lineW, lineY);
+    lineGrad.addColorStop(0, `rgba(0, 229, 255, 0)`);
+    lineGrad.addColorStop(0.5, `rgba(0, 229, 255, ${lineAlpha})`);
+    lineGrad.addColorStop(1, `rgba(0, 229, 255, 0)`);
+    ctx.fillStyle = lineGrad;
+    ctx.fillRect(w / 2 - lineW, lineY, lineW * 2, 2);
+
+    ctx.restore();
   }
 
   // --- Menu ---
@@ -1182,64 +1305,162 @@ export class Renderer {
     const w = canvas.width;
     const h = canvas.height;
 
+    // Fade in menu
+    this.menuAlpha = Math.min(1, this.menuAlpha + 0.02);
+    const ma = this.menuAlpha;
+
+    // Animated gradient background
+    const bgHue = (menuTime * 0.3) % 360;
     const grad = ctx.createLinearGradient(0, 0, 0, h);
-    grad.addColorStop(0, '#06000f');
-    grad.addColorStop(0.5, '#0a0020');
-    grad.addColorStop(1, '#0e0025');
+    grad.addColorStop(0, `hsl(${260 + Math.sin(menuTime * 0.008) * 15}, 80%, 3%)`);
+    grad.addColorStop(0.5, `hsl(${280 + Math.sin(menuTime * 0.006) * 10}, 70%, 4%)`);
+    grad.addColorStop(1, `hsl(${300 + Math.sin(menuTime * 0.01) * 12}, 65%, 6%)`);
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, w, h);
     this.background.render(ctx, menuTime * 0.8, w, h);
 
+    // Animated floating geometric particles
     ctx.save();
-    for (let i = 0; i < 6; i++) {
-      const t = menuTime * 0.015 + i * 1.1;
-      const fx = w * (0.1 + (i * 0.15) % 0.85);
-      const fy = h * 0.3 + Math.sin(t) * 40;
-      const s = 15 + i * 5;
-      ctx.fillStyle = `rgba(0, 229, 255, ${0.06 + Math.sin(t * 0.7) * 0.03})`;
-      ctx.beginPath();
-      ctx.moveTo(fx, fy - s);
-      ctx.lineTo(fx + s * 0.7, fy);
-      ctx.lineTo(fx, fy + s);
-      ctx.lineTo(fx - s * 0.7, fy);
-      ctx.closePath();
-      ctx.fill();
+    ctx.globalAlpha = ma;
+    for (let i = 0; i < 12; i++) {
+      const t = menuTime * 0.012 + i * 0.8;
+      const fx = w * (0.05 + ((i * 0.09 + Math.sin(t * 0.5 + i) * 0.05) % 0.9));
+      const fy = h * (0.15 + ((i * 0.07 + Math.cos(t * 0.3 + i * 2) * 0.08) % 0.65));
+      const s = 8 + i * 3 + Math.sin(t) * 4;
+      const alpha = 0.04 + Math.sin(t * 0.7) * 0.025;
+      const particleHue = (bgHue + i * 30) % 360;
+
+      ctx.fillStyle = `hsla(${particleHue}, 70%, 55%, ${alpha})`;
+
+      if (i % 3 === 0) {
+        // Diamond
+        ctx.beginPath();
+        ctx.moveTo(fx, fy - s);
+        ctx.lineTo(fx + s * 0.6, fy);
+        ctx.lineTo(fx, fy + s);
+        ctx.lineTo(fx - s * 0.6, fy);
+        ctx.closePath();
+        ctx.fill();
+      } else if (i % 3 === 1) {
+        // Circle
+        ctx.beginPath();
+        ctx.arc(fx, fy, s * 0.5, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        // Triangle
+        ctx.beginPath();
+        ctx.moveTo(fx, fy - s);
+        ctx.lineTo(fx + s * 0.7, fy + s * 0.5);
+        ctx.lineTo(fx - s * 0.7, fy + s * 0.5);
+        ctx.closePath();
+        ctx.fill();
+      }
     }
     ctx.restore();
 
+    // Horizontal glowing lines (animated)
+    for (let i = 0; i < 3; i++) {
+      const lineY = h * (0.25 + i * 0.2);
+      const linePhase = menuTime * 0.01 + i * 2;
+      const lineAlpha = (0.02 + Math.sin(linePhase) * 0.01) * ma;
+      const lineGrad = ctx.createLinearGradient(0, lineY, w, lineY);
+      lineGrad.addColorStop(0, `rgba(0, 229, 255, 0)`);
+      lineGrad.addColorStop(0.3 + Math.sin(linePhase * 0.7) * 0.15, `rgba(0, 229, 255, ${lineAlpha})`);
+      lineGrad.addColorStop(0.7 + Math.sin(linePhase * 0.5) * 0.1, `rgba(0, 229, 255, ${lineAlpha * 0.5})`);
+      lineGrad.addColorStop(1, `rgba(0, 229, 255, 0)`);
+      ctx.fillStyle = lineGrad;
+      ctx.fillRect(0, lineY - 0.5, w, 1);
+    }
+
+    // Title with breathing glow
     ctx.save();
+    ctx.globalAlpha = ma;
     ctx.shadowColor = '#00e5ff';
-    ctx.shadowBlur = 40;
+    ctx.shadowBlur = 30 + Math.sin(menuTime * 0.04) * 15;
     ctx.fillStyle = '#00e5ff';
     const ts = Math.floor(h / 7);
     ctx.font = `bold ${ts}px 'Arial Black', Arial, sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('GEOMETRY DASH', w / 2, h * 0.33);
-    ctx.shadowBlur = 20;
-    ctx.fillText('GEOMETRY DASH', w / 2, h * 0.33);
+    const titleY = h * 0.3 + Math.sin(menuTime * 0.02) * 3;
+    ctx.fillText('GEOMETRY DASH', w / 2, titleY);
+    // Double glow
+    ctx.shadowBlur = 15 + Math.sin(menuTime * 0.05) * 8;
+    ctx.fillText('GEOMETRY DASH', w / 2, titleY);
     ctx.restore();
 
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
-    ctx.font = `${Math.floor(h / 28)}px Arial, sans-serif`;
+    // Decorative line under title
+    ctx.save();
+    ctx.globalAlpha = ma * 0.5;
+    const underW = w * 0.25;
+    const underY = titleY + ts * 0.6;
+    const underGrad = ctx.createLinearGradient(w / 2 - underW, 0, w / 2 + underW, 0);
+    underGrad.addColorStop(0, 'rgba(0, 229, 255, 0)');
+    underGrad.addColorStop(0.5, 'rgba(0, 229, 255, 0.6)');
+    underGrad.addColorStop(1, 'rgba(0, 229, 255, 0)');
+    ctx.fillStyle = underGrad;
+    ctx.fillRect(w / 2 - underW, underY, underW * 2, 2);
+    ctx.restore();
+
+    // Level name with glow
+    ctx.save();
+    ctx.globalAlpha = ma * (0.35 + Math.sin(menuTime * 0.04) * 0.1);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `${Math.floor(h / 24)}px Arial, sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('First Flight', w / 2, h * 0.45);
-
-    const pulse = Math.sin(menuTime * 0.06) * 0.3 + 0.7;
-    ctx.save();
-    ctx.globalAlpha = pulse;
-    ctx.shadowColor = '#ffffff';
-    ctx.shadowBlur = 10;
-    ctx.fillStyle = '#ffffff';
-    ctx.font = `${Math.floor(h / 18)}px Arial, sans-serif`;
-    ctx.fillText('Click to Play', w / 2, h * 0.62);
+    ctx.fillText('~ First Flight ~', w / 2, h * 0.46);
     ctx.restore();
 
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
+    // Play button area with animated border
+    const btnW = w * 0.22;
+    const btnH = h * 0.08;
+    const btnX = w / 2 - btnW / 2;
+    const btnY = h * 0.58;
+    const btnPulse = Math.sin(menuTime * 0.06) * 0.3 + 0.7;
+
+    ctx.save();
+    ctx.globalAlpha = ma;
+
+    // Button glow background
+    ctx.shadowColor = '#00e5ff';
+    ctx.shadowBlur = 15 * btnPulse;
+    ctx.strokeStyle = `rgba(0, 229, 255, ${0.3 + btnPulse * 0.3})`;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(btnX, btnY, btnW, btnH);
+    ctx.shadowBlur = 0;
+
+    // Button fill
+    ctx.fillStyle = `rgba(0, 229, 255, ${0.05 + btnPulse * 0.03})`;
+    ctx.fillRect(btnX, btnY, btnW, btnH);
+
+    // Button text
+    ctx.globalAlpha = ma * btnPulse;
+    ctx.shadowColor = '#ffffff';
+    ctx.shadowBlur = 8;
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `bold ${Math.floor(h / 18)}px Arial, sans-serif`;
+    ctx.fillText('Click to Play', w / 2, btnY + btnH / 2);
+    ctx.restore();
+
+    // Controls hint
+    ctx.save();
+    ctx.globalAlpha = ma * 0.25;
+    ctx.fillStyle = '#ffffff';
     ctx.font = `${Math.floor(h / 32)}px Arial, sans-serif`;
     ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
     ctx.fillText('Space / Click / Tap to jump', w / 2, h * 0.82);
+    ctx.restore();
+
+    // Version / credit
+    ctx.save();
+    ctx.globalAlpha = ma * 0.15;
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `${Math.floor(h / 42)}px Arial, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText('Paperclip Games', w / 2, h * 0.93);
+    ctx.restore();
   }
 
   // --- Gameplay ---
@@ -1254,6 +1475,9 @@ export class Renderer {
     usedOrbs: Set<number>,
     beatProgress: number,
     scrollSpeed: number = CONFIG.SCROLL_SPEED,
+    audioEnergy: number = 0,
+    bassDropIntensity: number = 0,
+    levelStartTimer: number = 999,
   ): void {
     const { ctx, canvas } = this;
     const groundY = camera.groundScreenY;
@@ -1261,6 +1485,17 @@ export class Renderer {
 
     this.beatPulse = Math.max(0, 1 - beatProgress * 3.5);
     this.sectionHue = this.computeSectionHue(progress);
+    this.audioEnergy = audioEnergy;
+    this.bassDropIntensity = bassDropIntensity;
+    this.shimmerPhase += 0.02;
+
+    // --- Bass drop pre-effect: darken screen before burst ---
+    if (bassDropIntensity > 0.5) {
+      // Darken phase (first half of drop)
+      const darken = (bassDropIntensity - 0.5) * 0.3;
+      ctx.fillStyle = `rgba(0, 0, 0, ${darken})`;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
 
     this.drawGradient();
     this.background.render(ctx, camX, canvas.width, canvas.height, beatProgress, progress, scrollSpeed);
@@ -1295,10 +1530,50 @@ export class Renderer {
     if (this.modeFlash > 0.01) {
       ctx.fillStyle = `rgba(${this.modeFlashR}, ${this.modeFlashG}, ${this.modeFlashB}, ${this.modeFlash * 0.35})`;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
-      this.modeFlash *= 0.88; // fast decay
+      this.modeFlash *= 0.88;
+    }
+
+    // --- Bass drop burst effect: color explosion ---
+    if (bassDropIntensity > 0.01) {
+      const hue = this.sectionHue;
+      const burstAlpha = bassDropIntensity * 0.2;
+      // Radial color burst from center
+      const grad = ctx.createRadialGradient(
+        canvas.width / 2, canvas.height / 2, 0,
+        canvas.width / 2, canvas.height / 2, canvas.width * 0.7,
+      );
+      grad.addColorStop(0, `hsla(${hue}, 100%, 70%, ${burstAlpha})`);
+      grad.addColorStop(0.4, `hsla(${hue + 30}, 90%, 50%, ${burstAlpha * 0.5})`);
+      grad.addColorStop(1, `hsla(${hue + 60}, 80%, 30%, 0)`);
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Edge vignette flash
+      const vigAlpha = bassDropIntensity * 0.15;
+      const vigGrad = ctx.createRadialGradient(
+        canvas.width / 2, canvas.height / 2, canvas.width * 0.3,
+        canvas.width / 2, canvas.height / 2, canvas.width * 0.8,
+      );
+      vigGrad.addColorStop(0, 'rgba(0, 0, 0, 0)');
+      vigGrad.addColorStop(1, `rgba(255, 255, 255, ${vigAlpha})`);
+      ctx.fillStyle = vigGrad;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
+    // --- Dynamic color intensity overlay (saturation/brightness from energy) ---
+    if (audioEnergy > 0.1) {
+      const intensityAlpha = (audioEnergy - 0.1) * 0.06;
+      const hue = this.sectionHue;
+      ctx.fillStyle = `hsla(${hue}, 100%, 60%, ${intensityAlpha})`;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
 
     this.drawHUD(progress, attempts);
+
+    // --- Level name fade-in display ---
+    if (levelStartTimer < 180) {
+      this.drawLevelName(levelStartTimer);
+    }
   }
 
   // --- Death overlay ---
@@ -1317,39 +1592,200 @@ export class Renderer {
 
   // --- Complete overlay ---
 
-  renderCompleteOverlay(completeTime: number): void {
+  renderCompleteOverlay(
+    completeTime: number,
+    attempts: number = 1,
+    jumpCount: number = 0,
+    elapsedSeconds: number = 0,
+  ): void {
     const { ctx, canvas } = this;
     const w = canvas.width;
     const h = canvas.height;
 
-    ctx.fillStyle = `rgba(0, 0, 0, ${Math.min(0.5, completeTime * 0.008)})`;
+    // Darken background
+    ctx.fillStyle = `rgba(0, 0, 0, ${Math.min(0.6, completeTime * 0.008)})`;
     ctx.fillRect(0, 0, w, h);
 
-    if (completeTime > 15) {
+    if (completeTime <= 15) return;
+
+    const fadeIn = Math.min(1, (completeTime - 15) * 0.04);
+
+    // --- "Level Complete!" title with golden glow ---
+    ctx.save();
+    ctx.globalAlpha = fadeIn;
+    const titleSize = Math.floor(h / 8);
+    ctx.shadowColor = '#ffdd00';
+    ctx.shadowBlur = 25 + Math.sin(completeTime * 0.05) * 10;
+    ctx.fillStyle = '#ffdd00';
+    ctx.font = `bold ${titleSize}px 'Arial Black', Arial, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Level Complete!', w / 2, h * 0.22);
+    ctx.shadowBlur = 0;
+
+    // Decorative line under title
+    const lineW = w * 0.2;
+    const lineY = h * 0.22 + titleSize * 0.6;
+    const lineGrad = ctx.createLinearGradient(w / 2 - lineW, 0, w / 2 + lineW, 0);
+    lineGrad.addColorStop(0, 'rgba(255, 221, 0, 0)');
+    lineGrad.addColorStop(0.5, `rgba(255, 221, 0, ${fadeIn * 0.5})`);
+    lineGrad.addColorStop(1, 'rgba(255, 221, 0, 0)');
+    ctx.fillStyle = lineGrad;
+    ctx.fillRect(w / 2 - lineW, lineY, lineW * 2, 2);
+    ctx.restore();
+
+    // --- Star rating (based on attempts: 1=3 stars, 2-3=2 stars, 4+=1 star) ---
+    if (completeTime > 30) {
+      const starFade = Math.min(1, (completeTime - 30) * 0.04);
+      const stars = attempts <= 1 ? 3 : attempts <= 3 ? 2 : 1;
+      const starSize = Math.floor(h / 14);
+      const starGap = starSize * 1.8;
+      const starY = h * 0.36;
+
       ctx.save();
-      ctx.globalAlpha = Math.min(1, (completeTime - 15) * 0.04);
-      ctx.shadowColor = '#ffdd00';
-      ctx.shadowBlur = 30;
-      ctx.fillStyle = '#ffdd00';
-      ctx.font = `bold ${Math.floor(h / 7)}px 'Arial Black', Arial, sans-serif`;
+      ctx.globalAlpha = starFade * fadeIn;
+
+      for (let i = 0; i < 3; i++) {
+        const sx = w / 2 + (i - 1) * starGap;
+        const filled = i < stars;
+        // Stagger star appearance
+        const starDelay = 30 + i * 12;
+        if (completeTime < starDelay) continue;
+        const starScale = Math.min(1, (completeTime - starDelay) * 0.08);
+        // Bounce effect
+        const bounce = starScale < 1 ? 1 + (1 - starScale) * 0.3 : 1;
+
+        ctx.save();
+        ctx.translate(sx, starY);
+        ctx.scale(bounce, bounce);
+
+        if (filled) {
+          ctx.shadowColor = '#ffdd00';
+          ctx.shadowBlur = 12;
+          ctx.fillStyle = '#ffdd00';
+        } else {
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+        }
+
+        // Draw 5-point star
+        this.drawStar(ctx, 0, 0, starSize * 0.5, starSize * 0.22, 5);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+
+        if (filled) {
+          // Inner highlight
+          ctx.fillStyle = '#fff8cc';
+          this.drawStar(ctx, 0, 0, starSize * 0.25, starSize * 0.1, 5);
+          ctx.fill();
+        }
+
+        ctx.restore();
+      }
+      ctx.restore();
+    }
+
+    // --- Stats breakdown with animated counters ---
+    if (completeTime > 50) {
+      const statsFade = Math.min(1, (completeTime - 50) * 0.03);
+      const statSize = Math.floor(h / 26);
+      const labelSize = Math.floor(h / 36);
+      const statY = h * 0.50;
+      const statGap = h * 0.08;
+
+      // Animated counter function
+      const animCount = (target: number, delay: number): number => {
+        const elapsed = Math.max(0, completeTime - delay);
+        const duration = 40; // ticks to count up
+        const t = Math.min(1, elapsed / duration);
+        // Ease-out for counting
+        const eased = 1 - (1 - t) * (1 - t);
+        return Math.floor(target * eased);
+      };
+
+      ctx.save();
+      ctx.globalAlpha = statsFade * fadeIn;
+
+      // Stat items
+      const stats = [
+        { label: 'ATTEMPTS', value: `${animCount(attempts, 55)}`, delay: 55 },
+        { label: 'JUMPS', value: `${animCount(jumpCount, 65)}`, delay: 65 },
+        { label: 'TIME', value: this.formatTime(elapsedSeconds, completeTime, 75), delay: 75 },
+      ];
+
+      const totalWidth = stats.length * w * 0.2;
+      const startX = w / 2 - totalWidth / 2 + w * 0.1;
+
+      for (let i = 0; i < stats.length; i++) {
+        const stat = stats[i]!;
+        if (completeTime < stat.delay) continue;
+        const itemFade = Math.min(1, (completeTime - stat.delay) * 0.05);
+        const sx = startX + i * (totalWidth / stats.length);
+        const slideUp = (1 - itemFade) * 10;
+
+        ctx.save();
+        ctx.globalAlpha = itemFade * statsFade * fadeIn;
+
+        // Value
+        ctx.fillStyle = '#ffffff';
+        ctx.font = `bold ${statSize}px Arial, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(stat.value, sx, statY + i * statGap * 0.3 + slideUp);
+
+        // Label
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+        ctx.font = `${labelSize}px Arial, sans-serif`;
+        ctx.fillText(stat.label, sx, statY + i * statGap * 0.3 + statSize * 0.7 + slideUp);
+
+        ctx.restore();
+      }
+
+      ctx.restore();
+    }
+
+    // --- "Click to continue" prompt ---
+    if (completeTime > 120) {
+      ctx.save();
+      ctx.globalAlpha = Math.sin(completeTime * 0.06) * 0.3 + 0.7;
+      ctx.fillStyle = '#ffffff';
+      ctx.font = `${Math.floor(h / 24)}px Arial, sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('Level Complete!', w / 2, h * 0.35);
+      ctx.fillText('Click to continue', w / 2, h * 0.82);
       ctx.restore();
-
-      if (completeTime > 40) {
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-        ctx.font = `${Math.floor(h / 20)}px Arial, sans-serif`;
-        ctx.textAlign = 'center';
-        ctx.fillText('100%', w / 2, h * 0.52);
-      }
-      if (completeTime > 90) {
-        ctx.globalAlpha = Math.sin(completeTime * 0.06) * 0.3 + 0.7;
-        ctx.fillStyle = '#ffffff';
-        ctx.font = `${Math.floor(h / 24)}px Arial, sans-serif`;
-        ctx.fillText('Click to continue', w / 2, h * 0.68);
-        ctx.globalAlpha = 1;
-      }
     }
+  }
+
+  /** Draw a 5-point star path */
+  private drawStar(
+    ctx: CanvasRenderingContext2D,
+    cx: number,
+    cy: number,
+    outerR: number,
+    innerR: number,
+    points: number,
+  ): void {
+    ctx.beginPath();
+    for (let i = 0; i < points * 2; i++) {
+      const r = i % 2 === 0 ? outerR : innerR;
+      const angle = (i / (points * 2)) * Math.PI * 2 - Math.PI / 2;
+      const px = cx + Math.cos(angle) * r;
+      const py = cy + Math.sin(angle) * r;
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+  }
+
+  /** Format seconds as M:SS with animated counting */
+  private formatTime(totalSeconds: number, completeTime: number, delay: number): string {
+    const elapsed = Math.max(0, completeTime - delay);
+    const duration = 40;
+    const t = Math.min(1, elapsed / duration);
+    const eased = 1 - (1 - t) * (1 - t);
+    const animatedSeconds = totalSeconds * eased;
+    const m = Math.floor(animatedSeconds / 60);
+    const s = Math.floor(animatedSeconds % 60);
+    return `${m}:${s.toString().padStart(2, '0')}`;
   }
 }

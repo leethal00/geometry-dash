@@ -46,6 +46,14 @@ export class Game {
   private completeTimer = 0;
   private menuTime = 0;
 
+  // Level name display
+  private levelStartTimer = 0;
+
+  // Completion stats
+  private levelStartTime = 0;
+  private levelEndTime = 0;
+  private jumpCount = 0;
+
   // New object state
   private usedOrbs = new Set<number>();
 
@@ -148,6 +156,9 @@ export class Game {
     this.attempts++;
     this.usedOrbs.clear();
     this.nearMissCooldown = 0;
+    this.levelStartTimer = 0;
+    this.jumpCount = 0;
+    this.levelStartTime = performance.now();
     this.audio.start();
     this.stateMachine.transition(GameState.Playing);
   }
@@ -161,6 +172,9 @@ export class Game {
     const level = this.level;
     const mode = player.mode;
 
+    // Level start timer for name display
+    this.levelStartTimer++;
+
     // --- Mode-specific input handling ---
     switch (mode) {
       case VehicleMode.Cube:
@@ -171,6 +185,7 @@ export class Game {
           }
           if (!usedOrb) {
             player.jump();
+            this.jumpCount++;
           }
         }
         break;
@@ -601,6 +616,7 @@ export class Game {
 
   private complete(): void {
     this.completeTimer = 0;
+    this.levelEndTime = performance.now();
     this.particles.emitCelebration(this.player.x, this.player.y);
     this.audio.stop();
     this.stateMachine.transition(GameState.Complete);
@@ -624,7 +640,10 @@ export class Game {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     const state = this.stateMachine.state;
+    this.audio.updateAnalysis();
     const beatProgress = this.audio.playing ? this.audio.beatProgress : 0;
+    const audioEnergy = this.audio.energy;
+    const bassDropIntensity = this.audio.bassDropIntensity;
 
     switch (state) {
       case GameState.Menu:
@@ -636,7 +655,8 @@ export class Game {
         this.renderer.renderGameplay(
           this.camera, this.player, this.level,
           this.particles, this.progress, this.attempts,
-          this.usedOrbs, beatProgress,
+          this.usedOrbs, beatProgress, undefined,
+          audioEnergy, bassDropIntensity, this.levelStartTimer,
         );
         if (state === GameState.Paused) this.renderPauseOverlay();
         break;
@@ -645,19 +665,24 @@ export class Game {
         this.renderer.renderGameplay(
           this.camera, this.player, this.level,
           this.particles, this.progress, this.attempts,
-          this.usedOrbs, beatProgress,
+          this.usedOrbs, beatProgress, undefined,
+          audioEnergy, bassDropIntensity, this.levelStartTimer,
         );
         this.renderer.renderDeathOverlay(this.deathTimer);
         break;
 
-      case GameState.Complete:
+      case GameState.Complete: {
         this.renderer.renderGameplay(
           this.camera, this.player, this.level,
           this.particles, this.progress, this.attempts,
           this.usedOrbs, beatProgress,
         );
-        this.renderer.renderCompleteOverlay(this.completeTimer);
+        const elapsed = (this.levelEndTime - this.levelStartTime) / 1000;
+        this.renderer.renderCompleteOverlay(
+          this.completeTimer, this.attempts, this.jumpCount, elapsed,
+        );
         break;
+      }
     }
   }
 
