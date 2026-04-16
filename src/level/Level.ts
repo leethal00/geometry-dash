@@ -245,4 +245,23 @@ const FIRST_FLIGHT: LevelDefinition = {
     292,           // flip to ceiling
     308,           // flip back to ground
   ],
+
+  modePortals: [
+    // S3: Ship section — fly over the platform area
+    { x: 146, mode: VehicleMode.Ship },
+    // Back to cube before S3 combos end
+    { x: 164, mode: VehicleMode.Cube },
+    // S5: Ball section — gravity toggle challenge
+    { x: 282, mode: VehicleMode.Ball },
+    // Back to cube for gravity portals
+    { x: 290, mode: VehicleMode.Cube },
+    // S6: UFO for cooldown section
+    { x: 326, mode: VehicleMode.UFO },
+    // Wave for tight section
+    { x: 342, mode: VehicleMode.Wave },
+    // Spider before final pillar
+    { x: 358, mode: VehicleMode.Spider },
+    // Back to cube for victory lap
+    { x: 366, mode: VehicleMode.Cube },
+  ],
 };

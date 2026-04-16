@@ -1,4 +1,4 @@
-import { CONFIG } from '../game/Config.js';
+import { CONFIG, VehicleMode } from '../game/Config.js';
 import { Camera } from '../game/Camera.js';
 import { Player } from '../entities/Player.js';
 import { Level } from '../level/Level.js';
@@ -557,12 +557,11 @@ export class Renderer {
     }
   }
 
-  // --- Player cube ---
+  // --- Player (all vehicle modes) ---
 
   private drawPlayer(camX: number, groundY: number, player: Player): void {
     const { ctx } = this;
     const S = CONFIG.PLAYER_SIZE;
-    const VS = S + 6;
     const sx = player.x - camX;
     const sy = groundY - player.y - S;
 
@@ -570,6 +569,34 @@ export class Renderer {
     ctx.translate(sx + S / 2, sy + S / 2);
     if (player.gravityFlipped) ctx.scale(1, -1);
     ctx.rotate(player.rotation * Math.PI / 180);
+
+    switch (player.mode) {
+      case VehicleMode.Cube:
+        this.drawCubeShape(S);
+        break;
+      case VehicleMode.Ship:
+        this.drawShipShape(S);
+        break;
+      case VehicleMode.Ball:
+        this.drawBallShape(S);
+        break;
+      case VehicleMode.UFO:
+        this.drawUFOShape(S);
+        break;
+      case VehicleMode.Wave:
+        this.drawWaveShape(S);
+        break;
+      case VehicleMode.Spider:
+        this.drawSpiderShape(S);
+        break;
+    }
+
+    ctx.restore();
+  }
+
+  private drawCubeShape(S: number): void {
+    const { ctx } = this;
+    const VS = S + 6;
 
     ctx.shadowColor = '#00ff00';
     ctx.shadowBlur = 28;
@@ -579,7 +606,6 @@ export class Renderer {
     ctx.fillRect(-VS / 2, -VS / 2, VS, VS);
     ctx.shadowBlur = 0;
 
-    // Beveled edges
     ctx.fillStyle = '#66ff66';
     ctx.fillRect(-VS / 2, -VS / 2, VS, 2);
     ctx.fillRect(-VS / 2, -VS / 2, 2, VS);
@@ -603,8 +629,277 @@ export class Renderer {
     ctx.strokeRect(eyeX - eyeW / 2, eyeY - eyeH / 2, eyeW, eyeH);
     ctx.fillStyle = '#000000';
     ctx.fillRect(eyeX + eyeW * 0.08, eyeY - eyeH * 0.275, eyeW * 0.45, eyeH * 0.55);
+  }
 
-    ctx.restore();
+  private drawShipShape(S: number): void {
+    const { ctx } = this;
+    const hs = S * 0.6;
+
+    // Triangular ship body
+    ctx.shadowColor = '#00ccff';
+    ctx.shadowBlur = 20;
+    ctx.fillStyle = '#00ccff';
+    ctx.beginPath();
+    ctx.moveTo(hs, 0);             // nose (right)
+    ctx.lineTo(-hs, -hs * 0.7);    // top-left wing
+    ctx.lineTo(-hs * 0.4, 0);      // indent
+    ctx.lineTo(-hs, hs * 0.7);     // bottom-left wing
+    ctx.closePath();
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Inner detail
+    ctx.fillStyle = '#005580';
+    ctx.beginPath();
+    ctx.moveTo(hs * 0.5, 0);
+    ctx.lineTo(-hs * 0.5, -hs * 0.35);
+    ctx.lineTo(-hs * 0.2, 0);
+    ctx.lineTo(-hs * 0.5, hs * 0.35);
+    ctx.closePath();
+    ctx.fill();
+
+    // Outline
+    ctx.strokeStyle = '#66ddff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(hs, 0);
+    ctx.lineTo(-hs, -hs * 0.7);
+    ctx.lineTo(-hs * 0.4, 0);
+    ctx.lineTo(-hs, hs * 0.7);
+    ctx.closePath();
+    ctx.stroke();
+
+    // Engine glow
+    ctx.fillStyle = '#ff8800';
+    ctx.shadowColor = '#ff6600';
+    ctx.shadowBlur = 12;
+    ctx.beginPath();
+    ctx.arc(-hs * 0.5, 0, 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+
+  private drawBallShape(S: number): void {
+    const { ctx } = this;
+    const r = S * 0.48;
+
+    // Ball body
+    ctx.shadowColor = '#ff6600';
+    ctx.shadowBlur = 20;
+    ctx.fillStyle = '#ff6600';
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Inner ring
+    ctx.strokeStyle = '#cc4400';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 0.6, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Outline
+    ctx.strokeStyle = '#ffaa44';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Direction marker
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(r * 0.45, 0, 4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  private drawUFOShape(S: number): void {
+    const { ctx } = this;
+    const w = S * 0.7;
+    const h = S * 0.4;
+
+    // Dome
+    ctx.shadowColor = '#aa00ff';
+    ctx.shadowBlur = 18;
+    ctx.fillStyle = '#aa00ff';
+    ctx.beginPath();
+    ctx.ellipse(0, -h * 0.2, w * 0.4, h * 0.6, 0, Math.PI, 0);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Saucer body
+    ctx.fillStyle = '#7700cc';
+    ctx.beginPath();
+    ctx.ellipse(0, h * 0.1, w, h * 0.4, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Outline
+    ctx.strokeStyle = '#cc66ff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(0, h * 0.1, w, h * 0.4, 0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Bottom glow
+    ctx.fillStyle = '#cc66ff';
+    ctx.shadowColor = '#cc66ff';
+    ctx.shadowBlur = 14;
+    ctx.beginPath();
+    ctx.ellipse(0, h * 0.4, w * 0.5, 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+
+  private drawWaveShape(S: number): void {
+    const { ctx } = this;
+    const hs = S * 0.45;
+
+    // Diamond/arrow shape
+    ctx.shadowColor = '#00ff88';
+    ctx.shadowBlur = 22;
+    ctx.fillStyle = '#00ff88';
+    ctx.beginPath();
+    ctx.moveTo(hs, 0);         // right point
+    ctx.lineTo(0, -hs);        // top
+    ctx.lineTo(-hs, 0);        // left
+    ctx.lineTo(0, hs);         // bottom
+    ctx.closePath();
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Inner detail
+    ctx.fillStyle = '#008844';
+    ctx.beginPath();
+    ctx.moveTo(hs * 0.5, 0);
+    ctx.lineTo(0, -hs * 0.5);
+    ctx.lineTo(-hs * 0.5, 0);
+    ctx.lineTo(0, hs * 0.5);
+    ctx.closePath();
+    ctx.fill();
+
+    // Outline
+    ctx.strokeStyle = '#66ffbb';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(hs, 0);
+    ctx.lineTo(0, -hs);
+    ctx.lineTo(-hs, 0);
+    ctx.lineTo(0, hs);
+    ctx.closePath();
+    ctx.stroke();
+  }
+
+  private drawSpiderShape(S: number): void {
+    const { ctx } = this;
+    const hs = S * 0.45;
+
+    // Spider body (hexagonal)
+    ctx.shadowColor = '#ff0066';
+    ctx.shadowBlur = 18;
+    ctx.fillStyle = '#ff0066';
+    ctx.beginPath();
+    ctx.moveTo(hs * 0.8, -hs * 0.3);
+    ctx.lineTo(hs * 0.8, hs * 0.3);
+    ctx.lineTo(0, hs * 0.7);
+    ctx.lineTo(-hs * 0.8, hs * 0.3);
+    ctx.lineTo(-hs * 0.8, -hs * 0.3);
+    ctx.lineTo(0, -hs * 0.7);
+    ctx.closePath();
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Legs (4 lines)
+    ctx.strokeStyle = '#ff3388';
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 4; i++) {
+      const angle = (i / 4) * Math.PI + Math.PI * 0.25;
+      const lx = Math.cos(angle) * hs * 0.6;
+      const ly = Math.sin(angle) * hs * 0.6;
+      const ox = Math.cos(angle) * hs * 1.1;
+      const oy = Math.sin(angle) * hs * 1.1;
+      ctx.beginPath();
+      ctx.moveTo(lx, ly);
+      ctx.lineTo(ox, oy);
+      ctx.stroke();
+    }
+
+    // Eyes
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(-hs * 0.2, -hs * 0.1, 4, 0, Math.PI * 2);
+    ctx.arc(hs * 0.2, -hs * 0.1, 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#000000';
+    ctx.beginPath();
+    ctx.arc(-hs * 0.15, -hs * 0.1, 2, 0, Math.PI * 2);
+    ctx.arc(hs * 0.25, -hs * 0.1, 2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // --- Mode portals ---
+
+  private drawModePortals(camX: number, groundY: number, level: Level): void {
+    const { ctx, canvas } = this;
+    const portalW = U * 1.2;
+    const portalH = U * 6;
+    const now = Date.now();
+    const bp = this.beatPulse;
+
+    const MODE_COLORS: Record<VehicleMode, { main: string; glow: string; label: string }> = {
+      [VehicleMode.Cube]: { main: '#00ff00', glow: '#00ff00', label: 'CUBE' },
+      [VehicleMode.Ship]: { main: '#00ccff', glow: '#00ccff', label: 'SHIP' },
+      [VehicleMode.Ball]: { main: '#ff6600', glow: '#ff6600', label: 'BALL' },
+      [VehicleMode.UFO]: { main: '#aa00ff', glow: '#aa00ff', label: 'UFO' },
+      [VehicleMode.Wave]: { main: '#00ff88', glow: '#00ff88', label: 'WAVE' },
+      [VehicleMode.Spider]: { main: '#ff0066', glow: '#ff0066', label: 'SPIDER' },
+    };
+
+    for (const portal of level.modePortals) {
+      const sx = portal.x - camX - portalW / 2;
+      if (sx > canvas.width + portalW) continue;
+      if (sx + portalW < -portalW) continue;
+      const sy = groundY - portalH;
+
+      const colors = MODE_COLORS[portal.mode];
+
+      // Portal rectangle with mode color
+      ctx.shadowColor = colors.glow;
+      ctx.shadowBlur = 22 + bp * 16;
+      ctx.fillStyle = colors.main;
+      ctx.globalAlpha = 0.3 + bp * 0.15;
+      ctx.fillRect(sx, sy, portalW, portalH);
+      ctx.globalAlpha = 1;
+      ctx.shadowBlur = 0;
+
+      // Border
+      ctx.strokeStyle = colors.main;
+      ctx.lineWidth = 2.5;
+      ctx.shadowColor = colors.glow;
+      ctx.shadowBlur = 12 + bp * 8;
+      ctx.strokeRect(sx, sy, portalW, portalH);
+      ctx.shadowBlur = 0;
+
+      // Mode label at top
+      ctx.fillStyle = colors.main;
+      ctx.font = 'bold 11px Arial, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      ctx.shadowColor = colors.glow;
+      ctx.shadowBlur = 8;
+      ctx.fillText(colors.label, sx + portalW / 2, sy - 4);
+      ctx.shadowBlur = 0;
+
+      // Floating particles inside portal
+      for (let p = 0; p < 5; p++) {
+        const t = (now * 0.002 + p * 1.4) % 1;
+        const px = sx + portalW * (0.2 + Math.sin(now * 0.001 + p * 2.5) * 0.3 + 0.3);
+        const py = sy + portalH * t;
+        ctx.fillStyle = `rgba(255, 255, 255, ${Math.sin(t * Math.PI) * 0.7})`;
+        ctx.beginPath();
+        ctx.arc(px, py, 2 + Math.sin(now * 0.003 + p), 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
   }
 
   // --- Particles with rotation and shape variety ---
@@ -791,6 +1086,7 @@ export class Renderer {
     this.drawJumpPads(camX, groundY, level);
     this.drawJumpOrbs(camX, groundY, level, usedOrbs);
     this.drawGravityPortals(camX, groundY, level, particles);
+    this.drawModePortals(camX, groundY, level);
 
     if (player.gravityFlipped) {
       this.drawGravityCeiling(groundY);

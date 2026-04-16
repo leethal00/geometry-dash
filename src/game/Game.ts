@@ -1,4 +1,4 @@
-import { CONFIG } from './Config.js';
+import { CONFIG, VehicleMode } from './Config.js';
 import { GameState, GameStateMachine } from './GameState.js';
 import { InputHandler } from './Input.js';
 import { Camera } from './Camera.js';
@@ -111,7 +111,7 @@ export class Game {
         break;
 
       case GameState.Playing:
-        this.updatePlaying(input.actionPressed);
+        this.updatePlaying(input.actionPressed, input.actionHeld);
         break;
 
       case GameState.Dead:
@@ -137,9 +137,7 @@ export class Game {
     this.progress = 0;
     this.attempts++;
     this.usedOrbs.clear();
-    // Respawn reassembly particles converge onto the player
-    this.particles.emitRespawn(this.player.x, this.player.y);
-    this.audio.start(); // Start (or restart) music
+    this.audio.start();
     this.stateMachine.transition(GameState.Playing);
   }
 
@@ -147,53 +145,159 @@ export class Game {
   // Playing state update — physics, collision, progress
   // ================================================================
 
-  private updatePlaying(actionPressed: boolean): void {
+  private updatePlaying(actionPressed: boolean, actionHeld: boolean): void {
     const player = this.player;
     const level = this.level;
+    const mode = player.mode;
 
-    // --- Input: check orb first (mid-air), then normal jump ---
-    if (actionPressed) {
-      let usedOrb = false;
-      if (!player.onGround) {
-        usedOrb = this.checkOrbJump();
-      }
-      if (!usedOrb) {
-        player.jump();
-      }
+    // --- Mode-specific input handling ---
+    switch (mode) {
+      case VehicleMode.Cube:
+        if (actionPressed) {
+          let usedOrb = false;
+          if (!player.onGround) {
+            usedOrb = this.checkOrbJump();
+          }
+          if (!usedOrb) {
+            player.jump();
+          }
+        }
+        break;
+
+      case VehicleMode.Ship:
+        if (actionPressed && !player.onGround) {
+          this.checkOrbJump();
+        }
+        if (actionHeld) {
+          player.vy += player.gravityFlipped ? -CONFIG.SHIP_THRUST : CONFIG.SHIP_THRUST;
+        }
+        break;
+
+      case VehicleMode.Ball:
+        if (actionPressed) {
+          let usedOrb = false;
+          if (!player.onGround) {
+            usedOrb = this.checkOrbJump();
+          }
+          if (!usedOrb) {
+            player.ballTap();
+          }
+        }
+        break;
+
+      case VehicleMode.UFO:
+        if (actionPressed) {
+          let usedOrb = false;
+          if (!player.onGround) {
+            usedOrb = this.checkOrbJump();
+          }
+          if (!usedOrb) {
+            player.ufoTap();
+          }
+        }
+        break;
+
+      case VehicleMode.Wave:
+        if (actionPressed && !player.onGround) {
+          this.checkOrbJump();
+        }
+        break;
+
+      case VehicleMode.Spider:
+        if (actionPressed) {
+          let usedOrb = false;
+          if (!player.onGround) {
+            usedOrb = this.checkOrbJump();
+          }
+          if (!usedOrb) {
+            player.spiderTap();
+          }
+        }
+        break;
     }
 
-    // --- Physics ---
-    const wasOnGround = player.onGround;
-    if (!wasOnGround) {
-      player.vy += player.gravityFlipped ? CONFIG.GRAVITY : -CONFIG.GRAVITY;
-    }
-
+    // --- Mode-specific physics ---
     const prevY = player.y;
+    const floorCeilSolid = mode === VehicleMode.Ship || mode === VehicleMode.Wave;
+
+    switch (mode) {
+      case VehicleMode.Cube:
+        if (!player.onGround) {
+          player.vy += player.gravityFlipped ? CONFIG.GRAVITY : -CONFIG.GRAVITY;
+        }
+        break;
+
+      case VehicleMode.Ship:
+        player.vy += player.gravityFlipped ? CONFIG.SHIP_GRAVITY : -CONFIG.SHIP_GRAVITY;
+        player.vy = Math.max(-CONFIG.SHIP_MAX_VY, Math.min(CONFIG.SHIP_MAX_VY, player.vy));
+        player.onGround = false;
+        break;
+
+      case VehicleMode.Ball:
+        if (!player.onGround) {
+          player.vy += player.gravityFlipped ? CONFIG.BALL_GRAVITY : -CONFIG.BALL_GRAVITY;
+        }
+        break;
+
+      case VehicleMode.UFO:
+        player.vy += player.gravityFlipped ? CONFIG.UFO_GRAVITY : -CONFIG.UFO_GRAVITY;
+        break;
+
+      case VehicleMode.Wave:
+        player.vy = actionHeld
+          ? (player.gravityFlipped ? -CONFIG.WAVE_SPEED : CONFIG.WAVE_SPEED)
+          : (player.gravityFlipped ? CONFIG.WAVE_SPEED : -CONFIG.WAVE_SPEED);
+        player.onGround = false;
+        break;
+
+      case VehicleMode.Spider:
+        if (!player.onGround) {
+          player.vy += player.gravityFlipped ? CONFIG.SPIDER_GRAVITY : -CONFIG.SPIDER_GRAVITY;
+        }
+        break;
+    }
+
     player.x += CONFIG.SCROLL_SPEED;
     player.y += player.vy;
 
     // --- Record trail ---
     player.recordTrail();
 
-    // --- Ground collision (normal gravity) ---
-    player.onGround = false;
+    // --- Ground collision ---
     const centerX = player.x + S / 2;
 
+    if (mode !== VehicleMode.Ship && mode !== VehicleMode.Wave) {
+      player.onGround = false;
+    }
+
+    // Ground (y=0) collision
     if (!player.gravityFlipped && level.isOverGround(centerX) && player.y <= 0 && prevY >= -2) {
       player.y = 0;
       player.vy = 0;
-      player.onGround = true;
+      if (!floorCeilSolid) {
+        player.onGround = true;
+      }
+    } else if (player.gravityFlipped && level.isOverGround(centerX) && player.y <= 0) {
+      if (floorCeilSolid) {
+        player.y = 0;
+        player.vy = 0;
+      }
     }
 
-    // --- Ceiling collision (flipped gravity) ---
-    if (player.gravityFlipped && player.y >= CONFIG.CEILING_HEIGHT) {
-      player.y = CONFIG.CEILING_HEIGHT;
-      player.vy = 0;
-      player.onGround = true;
+    // Ceiling collision
+    if (player.y >= CONFIG.CEILING_HEIGHT) {
+      if (player.gravityFlipped || floorCeilSolid) {
+        player.y = CONFIG.CEILING_HEIGHT;
+        player.vy = 0;
+        if (!floorCeilSolid) {
+          player.onGround = true;
+        }
+      }
     }
 
     // --- Block collision ---
     let bestLanding = -Infinity;
+    let bestCeilingLanding = Infinity;
     let hitSide = false;
 
     for (const block of level.blocks) {
@@ -206,11 +310,20 @@ export class Game {
         player.y < block.y + U &&
         player.y + S > block.y
       ) {
-        const blockTop = block.y + U;
-        if (prevY >= blockTop - CONFIG.LANDING_TOLERANCE && player.vy <= 0) {
-          bestLanding = Math.max(bestLanding, blockTop);
+        if (!player.gravityFlipped) {
+          const blockTop = block.y + U;
+          if (prevY >= blockTop - CONFIG.LANDING_TOLERANCE && player.vy <= 0) {
+            bestLanding = Math.max(bestLanding, blockTop);
+          } else {
+            hitSide = true;
+          }
         } else {
-          hitSide = true;
+          const blockBottom = block.y;
+          if (prevY + S <= blockBottom + CONFIG.LANDING_TOLERANCE && player.vy >= 0) {
+            bestCeilingLanding = Math.min(bestCeilingLanding, blockBottom - S);
+          } else {
+            hitSide = true;
+          }
         }
       }
     }
@@ -218,7 +331,11 @@ export class Game {
     if (bestLanding > -Infinity) {
       player.y = bestLanding;
       player.vy = 0;
-      player.onGround = true;
+      if (!floorCeilSolid) player.onGround = true;
+    } else if (bestCeilingLanding < Infinity) {
+      player.y = bestCeilingLanding;
+      player.vy = 0;
+      if (!floorCeilSolid) player.onGround = true;
     } else if (hitSide) {
       this.die();
       return;
@@ -258,7 +375,6 @@ export class Game {
         player.y + S > pad.y
       ) {
         player.padLaunch();
-        this.particles.emitPadBurst(pad.x, pad.y);
       }
     }
 
@@ -278,14 +394,30 @@ export class Game {
       }
     }
 
+    // --- Mode portal collision ---
+    for (const portal of level.modePortals) {
+      const playerCenter = player.x + S / 2;
+      const prevCenter = playerCenter - CONFIG.SCROLL_SPEED;
+      if (prevCenter < portal.x && playerCenter >= portal.x) {
+        player.mode = portal.mode;
+        if (portal.mode === VehicleMode.Cube) {
+          player.gravityFlipped = false;
+        }
+        if (portal.mode === VehicleMode.Ship || portal.mode === VehicleMode.UFO) {
+          player.vy = 2;
+          player.onGround = false;
+        }
+      }
+    }
+
     // --- Fall death ---
     if (player.y < CONFIG.FALL_DEATH_Y) {
       this.die();
       return;
     }
 
-    // --- Rise death (flipped gravity) ---
-    if (player.gravityFlipped && player.y > CONFIG.CEILING_HEIGHT + 200) {
+    // --- Rise death (flipped gravity, non-ship/wave) ---
+    if (!floorCeilSolid && player.gravityFlipped && player.y > CONFIG.CEILING_HEIGHT + 200) {
       this.die();
       return;
     }
@@ -328,7 +460,6 @@ export class Game {
 
       if (dist < U * 0.8) {
         player.orbJump();
-        this.particles.emitOrbRing(orb.x, orb.y);
         this.usedOrbs.add(i);
         return true;
       }
