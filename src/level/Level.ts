@@ -1,6 +1,11 @@
-import { CONFIG } from '../game/Config.js';
+import { CONFIG, VehicleMode } from '../game/Config.js';
 
 // --- Level definition types (grid units) ---
+
+interface ModePortalDef {
+  x: number;         // grid x position
+  mode: VehicleMode;  // target vehicle mode
+}
 
 interface LevelDefinition {
   name: string;
@@ -11,6 +16,7 @@ interface LevelDefinition {
   jumpPads: [number, number][];
   jumpOrbs: [number, number][];
   gravityPortals: number[];
+  modePortals?: ModePortalDef[];
 }
 
 // --- Loaded level (pixel coordinates) ---
@@ -29,6 +35,11 @@ export interface GravityPortal {
   x: number;
 }
 
+export interface ModePortal {
+  x: number;
+  mode: VehicleMode;
+}
+
 export class Level {
   readonly name: string;
   readonly lengthPx: number;
@@ -39,6 +50,7 @@ export class Level {
   readonly jumpPads: LevelObstacle[];
   readonly jumpOrbs: LevelObstacle[];
   readonly gravityPortals: GravityPortal[];
+  readonly modePortals: ModePortal[];
 
   constructor(def: LevelDefinition) {
     const U = CONFIG.UNIT_SIZE;
@@ -73,6 +85,9 @@ export class Level {
       .sort((a, b) => a.x - b.x);
     this.gravityPortals = def.gravityPortals
       .map(x => ({ x: x * U }))
+      .sort((a, b) => a.x - b.x);
+    this.modePortals = (def.modePortals ?? [])
+      .map(p => ({ x: p.x * U, mode: p.mode }))
       .sort((a, b) => a.x - b.x);
   }
 

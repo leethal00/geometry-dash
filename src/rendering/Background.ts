@@ -82,6 +82,7 @@ export class Background {
     h: number,
     beatProgress: number = 0,
     levelProgress: number = 0,
+    scrollSpeed: number = 0,
   ): void {
     const beatPulse = Math.max(0, 1 - beatProgress * 3.5);
     const hue = (200 + levelProgress * 240) % 360;
@@ -133,8 +134,8 @@ export class Background {
     // 45 floating particles
     this.renderFloaters(ctx, cameraX, w, h, hue, beatPulse);
 
-    // Speed lines
-    this.renderSpeedLines(ctx, w, h, levelProgress, beatPulse);
+    // Speed lines (enhanced: intensity scales with scroll speed)
+    this.renderSpeedLines(ctx, w, h, levelProgress, beatPulse, scrollSpeed);
   }
 
   private drawGiantDiamond(
@@ -238,22 +239,36 @@ export class Background {
     h: number,
     levelProgress: number,
     beatPulse: number,
+    scrollSpeed: number = 0,
   ): void {
-    if (levelProgress < 0.2) return;
-    const intensity = Math.min(1, (levelProgress - 0.2) * 1.5);
-    const now = Date.now();
+    // Speed multiplier relative to base scroll speed
+    const baseSpeed = (128 * 4 * 40) / (60 * 60); // CONFIG.SCROLL_SPEED
+    const speedMult = scrollSpeed > 0 ? scrollSpeed / baseSpeed : 1;
 
-    for (let i = 0; i < 8; i++) {
+    // Base speed lines: appear after 20% progress
+    const progressIntensity = levelProgress >= 0.2 ? Math.min(1, (levelProgress - 0.2) * 1.5) : 0;
+
+    // High-speed lines: appear at 2x+ speed, scale up with speed
+    const highSpeedIntensity = speedMult >= 2 ? Math.min(1, (speedMult - 2) * 0.5 + 0.3) : 0;
+
+    const totalIntensity = Math.min(1.5, progressIntensity + highSpeedIntensity);
+    if (totalIntensity < 0.01) return;
+
+    const now = Date.now();
+    // More lines at higher speeds
+    const lineCount = Math.floor(8 + highSpeedIntensity * 12);
+
+    for (let i = 0; i < lineCount; i++) {
       const seed = i * 2731;
       const baseY = ((seed % 650) / 650) * h * 0.7 + h * 0.04;
-      const lineLen = 60 + (seed % 120);
-      const speed = 0.7 + (seed % 400) / 400;
+      const lineLen = (60 + (seed % 120)) * (1 + highSpeedIntensity * 0.8);
+      const speed = (0.7 + (seed % 400) / 400) * (1 + highSpeedIntensity * 1.5);
       const x = w - ((now * speed + seed * 50) % (w + lineLen * 2));
-      const alpha = (0.04 + beatPulse * 0.07) * intensity;
+      const alpha = (0.04 + beatPulse * 0.07) * totalIntensity;
 
       if (alpha < 0.005) continue;
       ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
-      ctx.fillRect(x, baseY, lineLen, 1.5);
+      ctx.fillRect(x, baseY, lineLen, 1.5 + highSpeedIntensity);
     }
   }
 

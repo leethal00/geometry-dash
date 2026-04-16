@@ -137,6 +137,8 @@ export class Game {
     this.progress = 0;
     this.attempts++;
     this.usedOrbs.clear();
+    // Respawn reassembly particles converge onto the player
+    this.particles.emitRespawn(this.player.x, this.player.y);
     this.audio.start(); // Start (or restart) music
     this.stateMachine.transition(GameState.Playing);
   }
@@ -256,6 +258,7 @@ export class Game {
         player.y + S > pad.y
       ) {
         player.padLaunch();
+        this.particles.emitPadBurst(pad.x, pad.y);
       }
     }
 
@@ -325,6 +328,7 @@ export class Game {
 
       if (dist < U * 0.8) {
         player.orbJump();
+        this.particles.emitOrbRing(orb.x, orb.y);
         this.usedOrbs.add(i);
         return true;
       }

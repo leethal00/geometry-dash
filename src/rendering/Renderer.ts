@@ -430,7 +430,7 @@ export class Renderer {
 
   // --- Gravity portals ---
 
-  private drawGravityPortals(camX: number, groundY: number, level: Level): void {
+  private drawGravityPortals(camX: number, groundY: number, level: Level, particles?: ParticleSystem): void {
     const { ctx, canvas } = this;
     const portalW = U * 1.2;
     const portalH = U * 6;
@@ -470,6 +470,11 @@ export class Renderer {
         ctx.fill();
       }
       ctx.shadowBlur = 0;
+
+      // Emit swirl particles around visible portals (throttled to ~every 4th frame)
+      if (particles && Math.random() < 0.25) {
+        particles.emitPortalSwirl(portal.x, groundY);
+      }
     }
   }
 
@@ -494,11 +499,14 @@ export class Renderer {
     ctx.shadowBlur = 0;
   }
 
-  // --- Player trail ---
+  // --- Player trail (enhanced with glow gradient and speed response) ---
 
-  private drawTrail(camX: number, groundY: number, player: Player): void {
+  private drawTrail(camX: number, groundY: number, player: Player, scrollSpeed: number): void {
     const { ctx } = this;
     const S = CONFIG.PLAYER_SIZE;
+    const hue = this.sectionHue;
+    // Speed factor: longer/brighter trail at higher speeds
+    const speedFactor = Math.min(2, scrollSpeed / CONFIG.SCROLL_SPEED);
 
     for (let i = 0; i < player.trail.length; i++) {
       const pos = player.trail[i]!;
@@ -507,14 +515,43 @@ export class Renderer {
       const sy = groundY - pos.y - S;
 
       ctx.save();
-      ctx.globalAlpha = t * 0.4;
+      ctx.globalAlpha = t * 0.35 * Math.min(1.5, 0.7 + speedFactor * 0.4);
       ctx.translate(sx + S / 2, sy + S / 2);
       if (player.gravityFlipped) ctx.scale(1, -1);
       ctx.rotate(pos.rotation * Math.PI / 180);
-      ctx.shadowColor = '#00ff00';
-      ctx.shadowBlur = 6 + t * 8;
-      ctx.fillStyle = '#00ff00';
-      ctx.fillRect(-S / 2, -S / 2, S, S);
+
+      // Trail glow — colour shifts with section hue
+      const trailHue = (120 + (hue - 200) * 0.15) % 360; // green-ish shifted by section
+      ctx.shadowColor = `hsl(${trailHue}, 100%, 50%)`;
+      ctx.shadowBlur = (6 + t * 10) * speedFactor;
+      ctx.fillStyle = `hsl(${trailHue}, 100%, 50%)`;
+
+      // Trail shape: squares with slight size decay
+      const trailSize = S * (0.6 + t * 0.4);
+      ctx.fillRect(-trailSize / 2, -trailSize / 2, trailSize, trailSize);
+      ctx.shadowBlur = 0;
+      ctx.restore();
+    }
+
+    // Continuous glow line connecting trail positions for wave-like feel
+    if (player.trail.length > 1) {
+      ctx.save();
+      ctx.globalAlpha = 0.15 * speedFactor;
+      ctx.strokeStyle = `hsl(${(120 + (hue - 200) * 0.15) % 360}, 100%, 50%)`;
+      ctx.lineWidth = 2 * speedFactor;
+      ctx.shadowColor = ctx.strokeStyle;
+      ctx.shadowBlur = 8 * speedFactor;
+      ctx.beginPath();
+      for (let i = 0; i < player.trail.length; i++) {
+        const pos = player.trail[i]!;
+        const px = pos.x - camX + S / 2;
+        const py = groundY - pos.y - S / 2;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      // Connect to current player position
+      ctx.lineTo(player.x - camX + S / 2, groundY - player.y - S / 2);
+      ctx.stroke();
       ctx.shadowBlur = 0;
       ctx.restore();
     }
@@ -570,7 +607,7 @@ export class Renderer {
     ctx.restore();
   }
 
-  // --- Particles with rotation ---
+  // --- Particles with rotation and shape variety ---
 
   private drawParticles(camX: number, groundY: number, particles: ParticleSystem): void {
     const { ctx } = this;
@@ -578,15 +615,46 @@ export class Renderer {
     for (const p of particles.particles) {
       const sx = p.x - camX;
       const sy = groundY - p.y - p.size;
-      const alpha = (p.life / p.maxLife) * 0.9;
+      const alpha = p.converging
+        ? (1 - p.life / p.maxLife) * 0.8 + 0.2 // converging: fade IN
+        : (p.life / p.maxLife) * 0.9;           // normal: fade OUT
 
       ctx.save();
       ctx.translate(sx + p.size / 2, sy + p.size / 2);
       ctx.rotate(p.rot);
       ctx.fillStyle = `rgba(${p.r}, ${p.g}, ${p.b}, ${alpha})`;
-      ctx.shadowColor = `rgba(${p.r}, ${p.g}, ${p.b}, ${alpha * 0.5})`;
+      ctx.shadowColor = `rgba(${p.r}, ${p.g}, ${p.b}, ${alpha * 0.6})`;
       ctx.shadowBlur = 8;
-      ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
+
+      const hs = p.size / 2;
+      switch (p.shape) {
+        case 0: // square
+          ctx.fillRect(-hs, -hs, p.size, p.size);
+          break;
+        case 1: // triangle
+          ctx.beginPath();
+          ctx.moveTo(0, -hs);
+          ctx.lineTo(hs, hs);
+          ctx.lineTo(-hs, hs);
+          ctx.closePath();
+          ctx.fill();
+          break;
+        case 2: // circle
+          ctx.beginPath();
+          ctx.arc(0, 0, hs, 0, Math.PI * 2);
+          ctx.fill();
+          break;
+        case 3: // diamond
+          ctx.beginPath();
+          ctx.moveTo(0, -hs);
+          ctx.lineTo(hs, 0);
+          ctx.lineTo(0, hs);
+          ctx.lineTo(-hs, 0);
+          ctx.closePath();
+          ctx.fill();
+          break;
+      }
+
       ctx.shadowBlur = 0;
       ctx.restore();
     }
@@ -700,6 +768,7 @@ export class Renderer {
     attempts: number,
     usedOrbs: Set<number>,
     beatProgress: number,
+    scrollSpeed: number = CONFIG.SCROLL_SPEED,
   ): void {
     const { ctx, canvas } = this;
     const groundY = camera.groundScreenY;
@@ -709,7 +778,7 @@ export class Renderer {
     this.sectionHue = this.computeSectionHue(progress);
 
     this.drawGradient();
-    this.background.render(ctx, camX, canvas.width, canvas.height, beatProgress, progress);
+    this.background.render(ctx, camX, canvas.width, canvas.height, beatProgress, progress, scrollSpeed);
 
     ctx.save();
     ctx.translate(camera.shakeX, camera.shakeY);
@@ -721,14 +790,14 @@ export class Renderer {
     this.drawSpikes(camX, groundY, level);
     this.drawJumpPads(camX, groundY, level);
     this.drawJumpOrbs(camX, groundY, level, usedOrbs);
-    this.drawGravityPortals(camX, groundY, level);
+    this.drawGravityPortals(camX, groundY, level, particles);
 
     if (player.gravityFlipped) {
       this.drawGravityCeiling(groundY);
     }
 
     if (player.alive) {
-      this.drawTrail(camX, groundY, player);
+      this.drawTrail(camX, groundY, player, scrollSpeed);
       this.drawPlayer(camX, groundY, player);
     }
 

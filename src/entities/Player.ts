@@ -1,4 +1,4 @@
-import { CONFIG } from '../game/Config.js';
+import { CONFIG, VehicleMode } from '../game/Config.js';
 
 export interface TrailPoint {
   x: number;
@@ -24,6 +24,8 @@ export class Player {
   gravityFlipped = false;
   /** Trail of recent positions for rendering */
   trail: TrailPoint[] = [];
+  /** Current vehicle mode */
+  mode: VehicleMode = VehicleMode.Cube;
 
   reset(): void {
     this.x = 80; // start 2 blocks in
@@ -35,13 +37,38 @@ export class Player {
     this.targetRotation = 0;
     this.gravityFlipped = false;
     this.trail = [];
+    this.mode = VehicleMode.Cube;
   }
 
+  /** Cube mode: single tap jump from ground */
   jump(): void {
     if (!this.onGround) return;
     this.vy = this.gravityFlipped ? -CONFIG.JUMP_VELOCITY : CONFIG.JUMP_VELOCITY;
     this.onGround = false;
     this.targetRotation += this.gravityFlipped ? -90 : 90;
+  }
+
+  /** Ball mode: toggle gravity direction on tap */
+  ballTap(): void {
+    if (!this.onGround) return;
+    this.gravityFlipped = !this.gravityFlipped;
+    this.vy = this.gravityFlipped ? -CONFIG.BALL_GRAVITY * 4 : CONFIG.BALL_GRAVITY * 4;
+    this.onGround = false;
+  }
+
+  /** UFO mode: short upward impulse on each tap */
+  ufoTap(): void {
+    this.vy = this.gravityFlipped ? -CONFIG.UFO_IMPULSE : CONFIG.UFO_IMPULSE;
+  }
+
+  /** Spider mode: teleport to opposite surface */
+  spiderTap(): void {
+    if (!this.onGround) return;
+    this.gravityFlipped = !this.gravityFlipped;
+    // Teleport: will be handled in Game.ts by snapping to opposite surface
+    this.onGround = false;
+    // Give a small impulse toward the new surface
+    this.vy = this.gravityFlipped ? CONFIG.SPIDER_GRAVITY * 3 : -CONFIG.SPIDER_GRAVITY * 3;
   }
 
   padLaunch(): void {
@@ -66,11 +93,29 @@ export class Player {
 
   /** Smoothly interpolate visual rotation toward target */
   updateRotation(): void {
-    const diff = this.targetRotation - this.rotation;
-    if (Math.abs(diff) < 0.5) {
-      this.rotation = this.targetRotation;
-    } else {
-      this.rotation += diff * 0.18;
+    if (this.mode === VehicleMode.Cube) {
+      // Cube: snap rotation toward target
+      const diff = this.targetRotation - this.rotation;
+      if (Math.abs(diff) < 0.5) {
+        this.rotation = this.targetRotation;
+      } else {
+        this.rotation += diff * 0.18;
+      }
+    } else if (this.mode === VehicleMode.Ball) {
+      // Ball: continuous rotation in movement direction
+      const dir = this.gravityFlipped ? -1 : 1;
+      this.rotation += dir * 5;
+    } else if (this.mode === VehicleMode.Ship || this.mode === VehicleMode.UFO) {
+      // Ship/UFO: tilt based on vertical velocity
+      const targetTilt = Math.max(-30, Math.min(30, this.vy * 3));
+      this.rotation += (targetTilt - this.rotation) * 0.15;
+    } else if (this.mode === VehicleMode.Wave) {
+      // Wave: fixed 45° angle based on direction
+      const target = this.vy > 0 ? 45 : -45;
+      this.rotation += (target - this.rotation) * 0.3;
+    } else if (this.mode === VehicleMode.Spider) {
+      // Spider: no rotation, stays upright
+      this.rotation += (0 - this.rotation) * 0.2;
     }
   }
 }

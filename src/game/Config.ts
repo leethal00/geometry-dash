@@ -1,3 +1,13 @@
+/** Vehicle mode types */
+export enum VehicleMode {
+  Cube = 'cube',
+  Ship = 'ship',
+  Ball = 'ball',
+  UFO = 'ufo',
+  Wave = 'wave',
+  Spider = 'spider',
+}
+
 /** Game constants — physics values in pixels per tick at 60fps unless noted. */
 
 export const CONFIG = {
@@ -84,6 +94,37 @@ export const CONFIG = {
 
   /** Ceiling height in pixels above ground (for gravity flip) */
   CEILING_HEIGHT: 400,
+
+  // --- Ship mode ---
+
+  /** Ship thrust when holding (px/tick²) — applied upward while holding */
+  SHIP_THRUST: 0.5 * 40,       // 0.5 units/tick² → 20 px/tick²
+  /** Ship gravity (px/tick²) — lighter than cube */
+  SHIP_GRAVITY: 0.4 * 40 / 60, // scaled to match: ~0.267 px/tick²
+  /** Ship max vertical speed (px/tick) */
+  SHIP_MAX_VY: 12,
+
+  // --- Ball mode ---
+
+  /** Ball gravity (px/tick²) — same as cube */
+  BALL_GRAVITY: 1.4,
+
+  // --- UFO mode ---
+
+  /** UFO tap impulse (px/tick) — short upward boost per tap */
+  UFO_IMPULSE: 10,
+  /** UFO gravity (px/tick²) */
+  UFO_GRAVITY: 0.95,
+
+  // --- Wave mode ---
+
+  /** Wave diagonal speed (px/tick) — constant up or down */
+  WAVE_SPEED: 7,
+
+  // --- Spider mode ---
+
+  /** Spider gravity (px/tick²) — pulls toward current surface */
+  SPIDER_GRAVITY: 1.4,
 
   // --- Visual ---
 
