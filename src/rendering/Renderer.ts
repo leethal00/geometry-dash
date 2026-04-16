@@ -14,11 +14,24 @@ export class Renderer {
 
   private beatPulse = 0;
   private sectionHue = 200;
+  /** Mode transition flash (decays from 1 to 0) */
+  private modeFlash = 0;
+  private modeFlashR = 0;
+  private modeFlashG = 0;
+  private modeFlashB = 0;
 
   constructor(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D) {
     this.canvas = canvas;
     this.ctx = ctx;
     this.background = new Background();
+  }
+
+  /** Trigger a colour flash when switching vehicle mode */
+  triggerModeFlash(r: number, g: number, b: number): void {
+    this.modeFlash = 1;
+    this.modeFlashR = r;
+    this.modeFlashG = g;
+    this.modeFlashB = b;
   }
 
   /** Colour theme shifts through the level: cyan→purple→green→orange→pink→cyan */
@@ -251,59 +264,149 @@ export class Renderer {
       const sy = groundY - block.y - U;
       const variety = (i * 7 + Math.floor(block.x / U)) % 5;
 
-      if (variety === 4) {
-        // Glowing block (every 5th-ish block)
-        ctx.fillStyle = `hsla(${hue}, 60%, 20%, 0.9)`;
-        ctx.fillRect(sx, sy, U, U);
-        ctx.shadowColor = `hsl(${hue}, 70%, 50%)`;
-        ctx.shadowBlur = 8 + bp * 6;
-        ctx.strokeStyle = `hsl(${hue}, 70%, 50%)`;
-        ctx.lineWidth = 2;
-        ctx.strokeRect(sx + 1, sy + 1, U - 2, U - 2);
-        ctx.shadowBlur = 0;
-        // Inner highlight
-        ctx.strokeStyle = `hsla(${hue}, 60%, 60%, 0.2)`;
-        ctx.lineWidth = 1;
-        ctx.strokeRect(sx + 5, sy + 5, U - 10, U - 10);
-      } else {
-        // Standard 3D beveled block
-        ctx.fillStyle = '#0a1628';
-        ctx.fillRect(sx, sy, U, U);
+      // Beat-reactive scale — subtle size pulse on beat
+      const beatScale = 1 + bp * 0.03;
+      const offset = (U * (beatScale - 1)) / 2;
 
-        // Light top + left edges
-        ctx.fillStyle = '#2a5080';
-        ctx.fillRect(sx, sy, U, 3);
-        ctx.fillStyle = '#1e4070';
-        ctx.fillRect(sx, sy, 3, U);
+      ctx.save();
+      ctx.translate(sx - offset, sy - offset);
+      const bU = U * beatScale;
 
-        // Dark bottom + right edges
-        ctx.fillStyle = '#040a14';
-        ctx.fillRect(sx, sy + U - 3, U, 3);
-        ctx.fillStyle = '#060c1a';
-        ctx.fillRect(sx + U - 3, sy, 3, U);
+      switch (variety) {
+        case 0:
+          // Gradient fill block
+          {
+            const grad = ctx.createLinearGradient(0, 0, 0, bU);
+            grad.addColorStop(0, `hsl(${hue}, 50%, 18%)`);
+            grad.addColorStop(1, `hsl(${hue + 20}, 60%, 8%)`);
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, bU, bU);
+            // Bevel edges
+            ctx.fillStyle = `hsl(${hue}, 40%, 28%)`;
+            ctx.fillRect(0, 0, bU, 3);
+            ctx.fillRect(0, 0, 3, bU);
+            ctx.fillStyle = `hsl(${hue + 20}, 60%, 4%)`;
+            ctx.fillRect(0, bU - 3, bU, 3);
+            ctx.fillRect(bU - 3, 0, 3, bU);
+            // Outer border
+            ctx.strokeStyle = `hsl(${hue}, 50%, 30%)`;
+            ctx.lineWidth = 1.5;
+            ctx.strokeRect(0.5, 0.5, bU - 1, bU - 1);
+          }
+          break;
 
-        // Inner cross detail
-        ctx.strokeStyle = 'rgba(60, 120, 200, 0.2)';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(sx + 7, sy + U / 2);
-        ctx.lineTo(sx + U - 7, sy + U / 2);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(sx + U / 2, sy + 7);
-        ctx.lineTo(sx + U / 2, sy + U - 7);
-        ctx.stroke();
+        case 1:
+          // Circuit pattern block
+          {
+            ctx.fillStyle = '#0a1628';
+            ctx.fillRect(0, 0, bU, bU);
+            // Circuit traces
+            ctx.strokeStyle = `hsla(${hue + 60}, 80%, 45%, 0.35 + bp * 0.15)`;
+            ctx.lineWidth = 1.5;
+            // Horizontal traces
+            ctx.beginPath();
+            ctx.moveTo(0, bU * 0.3);
+            ctx.lineTo(bU * 0.4, bU * 0.3);
+            ctx.lineTo(bU * 0.5, bU * 0.5);
+            ctx.lineTo(bU, bU * 0.5);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(0, bU * 0.7);
+            ctx.lineTo(bU * 0.3, bU * 0.7);
+            ctx.lineTo(bU * 0.4, bU * 0.55);
+            ctx.stroke();
+            // Node dots
+            ctx.fillStyle = `hsla(${hue + 60}, 90%, 55%, 0.5 + bp * 0.3)`;
+            ctx.beginPath();
+            ctx.arc(bU * 0.4, bU * 0.3, 2.5, 0, Math.PI * 2);
+            ctx.arc(bU * 0.5, bU * 0.5, 2.5, 0, Math.PI * 2);
+            ctx.fill();
+            // Outer border
+            ctx.strokeStyle = `hsl(${hue + 60}, 50%, 25%)`;
+            ctx.lineWidth = 1.5;
+            ctx.strokeRect(0.5, 0.5, bU - 1, bU - 1);
+          }
+          break;
 
-        // Inner border
-        ctx.strokeStyle = 'rgba(80, 150, 220, 0.15)';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(sx + 5, sy + 5, U - 10, U - 10);
+        case 2:
+          // Crystalline block — diagonal facets
+          {
+            ctx.fillStyle = `hsl(${hue + 120}, 30%, 10%)`;
+            ctx.fillRect(0, 0, bU, bU);
+            // Facet lines
+            ctx.strokeStyle = `hsla(${hue + 120}, 60%, 50%, 0.2 + bp * 0.1)`;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(0, 0); ctx.lineTo(bU, bU);
+            ctx.moveTo(bU, 0); ctx.lineTo(0, bU);
+            ctx.moveTo(bU / 2, 0); ctx.lineTo(bU, bU / 2);
+            ctx.moveTo(0, bU / 2); ctx.lineTo(bU / 2, bU);
+            ctx.stroke();
+            // Center glow
+            ctx.fillStyle = `hsla(${hue + 120}, 70%, 55%, ${0.08 + bp * 0.06})`;
+            ctx.beginPath();
+            ctx.arc(bU / 2, bU / 2, bU * 0.25, 0, Math.PI * 2);
+            ctx.fill();
+            // Outer border
+            ctx.strokeStyle = `hsl(${hue + 120}, 40%, 30%)`;
+            ctx.lineWidth = 1.5;
+            ctx.strokeRect(0.5, 0.5, bU - 1, bU - 1);
+          }
+          break;
 
-        // Outer border
-        ctx.strokeStyle = '#2850a0';
-        ctx.lineWidth = 1.5;
-        ctx.strokeRect(sx + 0.5, sy + 0.5, U - 1, U - 1);
+        case 3:
+          // Metallic sheen block
+          {
+            const grad = ctx.createLinearGradient(0, 0, bU, bU);
+            grad.addColorStop(0, '#1a2a40');
+            grad.addColorStop(0.45, '#2a4060');
+            grad.addColorStop(0.55, '#3a5578');
+            grad.addColorStop(1, '#0e1828');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, bU, bU);
+            // Highlight streak
+            ctx.fillStyle = `rgba(180, 210, 255, ${0.06 + bp * 0.04})`;
+            ctx.beginPath();
+            ctx.moveTo(bU * 0.1, 0);
+            ctx.lineTo(bU * 0.35, 0);
+            ctx.lineTo(bU * 0.15, bU);
+            ctx.lineTo(bU * -0.1, bU);
+            ctx.closePath();
+            ctx.fill();
+            // Bevel
+            ctx.fillStyle = 'rgba(140, 180, 220, 0.2)';
+            ctx.fillRect(0, 0, bU, 2);
+            ctx.fillRect(0, 0, 2, bU);
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+            ctx.fillRect(0, bU - 2, bU, 2);
+            ctx.fillRect(bU - 2, 0, 2, bU);
+            // Outer border
+            ctx.strokeStyle = '#3a6090';
+            ctx.lineWidth = 1.5;
+            ctx.strokeRect(0.5, 0.5, bU - 1, bU - 1);
+          }
+          break;
+
+        case 4:
+          // Glowing block (section-hue themed)
+          {
+            ctx.fillStyle = `hsla(${hue}, 60%, 20%, 0.9)`;
+            ctx.fillRect(0, 0, bU, bU);
+            ctx.shadowColor = `hsl(${hue}, 70%, 50%)`;
+            ctx.shadowBlur = 8 + bp * 10;
+            ctx.strokeStyle = `hsl(${hue}, 70%, 50%)`;
+            ctx.lineWidth = 2;
+            ctx.strokeRect(1, 1, bU - 2, bU - 2);
+            ctx.shadowBlur = 0;
+            // Inner highlight
+            ctx.strokeStyle = `hsla(${hue}, 60%, 60%, 0.25)`;
+            ctx.lineWidth = 1;
+            ctx.strokeRect(5, 5, bU - 10, bU - 10);
+          }
+          break;
       }
+
+      ctx.restore();
     }
   }
 
@@ -311,6 +414,7 @@ export class Renderer {
 
   private drawSpikes(camX: number, groundY: number, level: Level): void {
     const { ctx, canvas } = this;
+    const bp = this.beatPulse;
 
     for (const spike of level.spikes) {
       const sx = spike.x - camX;
@@ -320,8 +424,19 @@ export class Renderer {
       const baseY = groundY - spike.y;
       const tipY = groundY - spike.y - U;
 
-      ctx.shadowColor = '#ff3333';
-      ctx.shadowBlur = 10;
+      // Beat-reactive: scale spike slightly on beat
+      const spikeScale = 1 + bp * 0.04;
+      const cx = sx + U / 2;
+      const cy = baseY;
+
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.scale(spikeScale, spikeScale);
+      ctx.translate(-cx, -cy);
+
+      // Outer glow intensifies on beat
+      ctx.shadowColor = `rgb(255, ${50 + bp * 60}, ${50 + bp * 60})`;
+      ctx.shadowBlur = 10 + bp * 14;
 
       ctx.fillStyle = '#ffffff';
       ctx.beginPath();
@@ -332,7 +447,8 @@ export class Renderer {
       ctx.fill();
 
       ctx.shadowBlur = 0;
-      ctx.fillStyle = '#dd2222';
+      // Inner fill pulses brighter on beat
+      ctx.fillStyle = `rgb(${221 + bp * 34}, ${34 + bp * 30}, ${34 + bp * 30})`;
       ctx.beginPath();
       ctx.moveTo(sx + U / 2, tipY + 7);
       ctx.lineTo(sx + U - 6, baseY - 1);
@@ -340,7 +456,7 @@ export class Renderer {
       ctx.closePath();
       ctx.fill();
 
-      ctx.strokeStyle = 'rgba(255, 100, 100, 0.6)';
+      ctx.strokeStyle = `rgba(255, ${100 + bp * 80}, ${100 + bp * 80}, ${0.6 + bp * 0.3})`;
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(sx + U / 2, tipY + 1);
@@ -348,6 +464,8 @@ export class Renderer {
       ctx.moveTo(sx + U / 2, tipY + 1);
       ctx.lineTo(sx + 1, baseY);
       ctx.stroke();
+
+      ctx.restore();
     }
   }
 
@@ -501,12 +619,21 @@ export class Renderer {
 
   // --- Player trail (enhanced with glow gradient and speed response) ---
 
+  /** Mode-specific trail colours and shapes */
+  private static readonly TRAIL_STYLES: Record<VehicleMode, { hue: number; sat: number; light: number; shape: 'square' | 'circle' | 'triangle' | 'diamond' | 'lightning' | 'web' }> = {
+    [VehicleMode.Cube]:   { hue: 120, sat: 100, light: 50, shape: 'square' },
+    [VehicleMode.Ship]:   { hue: 195, sat: 100, light: 55, shape: 'triangle' },   // engine exhaust
+    [VehicleMode.Ball]:   { hue: 25,  sat: 100, light: 50, shape: 'circle' },     // rolling sparks
+    [VehicleMode.UFO]:    { hue: 270, sat: 80,  light: 60, shape: 'diamond' },    // anti-grav shimmer
+    [VehicleMode.Wave]:   { hue: 160, sat: 100, light: 50, shape: 'lightning' },  // lightning trail
+    [VehicleMode.Spider]: { hue: 340, sat: 100, light: 55, shape: 'web' },        // web threads
+  };
+
   private drawTrail(camX: number, groundY: number, player: Player, scrollSpeed: number): void {
     const { ctx } = this;
     const S = CONFIG.PLAYER_SIZE;
-    const hue = this.sectionHue;
-    // Speed factor: longer/brighter trail at higher speeds
     const speedFactor = Math.min(2, scrollSpeed / CONFIG.SCROLL_SPEED);
+    const style = Renderer.TRAIL_STYLES[player.mode];
 
     for (let i = 0; i < player.trail.length; i++) {
       const pos = player.trail[i]!;
@@ -515,31 +642,92 @@ export class Renderer {
       const sy = groundY - pos.y - S;
 
       ctx.save();
-      ctx.globalAlpha = t * 0.35 * Math.min(1.5, 0.7 + speedFactor * 0.4);
+      ctx.globalAlpha = t * 0.4 * Math.min(1.5, 0.7 + speedFactor * 0.4);
       ctx.translate(sx + S / 2, sy + S / 2);
       if (player.gravityFlipped) ctx.scale(1, -1);
       ctx.rotate(pos.rotation * Math.PI / 180);
 
-      // Trail glow — colour shifts with section hue
-      const trailHue = (120 + (hue - 200) * 0.15) % 360; // green-ish shifted by section
-      ctx.shadowColor = `hsl(${trailHue}, 100%, 50%)`;
+      const col = `hsl(${style.hue}, ${style.sat}%, ${style.light}%)`;
+      ctx.shadowColor = col;
       ctx.shadowBlur = (6 + t * 10) * speedFactor;
-      ctx.fillStyle = `hsl(${trailHue}, 100%, 50%)`;
+      ctx.fillStyle = col;
 
-      // Trail shape: squares with slight size decay
-      const trailSize = S * (0.6 + t * 0.4);
-      ctx.fillRect(-trailSize / 2, -trailSize / 2, trailSize, trailSize);
+      const ts = S * (0.5 + t * 0.4);
+      const hs = ts / 2;
+
+      switch (style.shape) {
+        case 'square':
+          ctx.fillRect(-hs, -hs, ts, ts);
+          break;
+        case 'circle':
+          ctx.beginPath();
+          ctx.arc(0, 0, hs, 0, Math.PI * 2);
+          ctx.fill();
+          // Rolling spark dot
+          ctx.fillStyle = `hsla(40, 100%, 70%, ${t * 0.6})`;
+          ctx.beginPath();
+          ctx.arc(hs * 0.5 * Math.cos(i * 1.2), hs * 0.5 * Math.sin(i * 1.2), 2, 0, Math.PI * 2);
+          ctx.fill();
+          break;
+        case 'triangle':
+          // Engine exhaust — wider at back
+          ctx.beginPath();
+          ctx.moveTo(hs * 0.3, 0);
+          ctx.lineTo(-hs, -hs * 0.6);
+          ctx.lineTo(-hs, hs * 0.6);
+          ctx.closePath();
+          ctx.fill();
+          // Hot center
+          ctx.fillStyle = `hsla(30, 100%, 70%, ${t * 0.5})`;
+          ctx.beginPath();
+          ctx.arc(-hs * 0.3, 0, hs * 0.25, 0, Math.PI * 2);
+          ctx.fill();
+          break;
+        case 'diamond':
+          // Anti-gravity shimmer
+          ctx.beginPath();
+          ctx.moveTo(0, -hs);
+          ctx.lineTo(hs * 0.6, 0);
+          ctx.lineTo(0, hs);
+          ctx.lineTo(-hs * 0.6, 0);
+          ctx.closePath();
+          ctx.fill();
+          break;
+        case 'lightning':
+          // Lightning bolt segment
+          ctx.strokeStyle = col;
+          ctx.lineWidth = 2 + t * 2;
+          ctx.beginPath();
+          ctx.moveTo(-hs, -hs * 0.4);
+          ctx.lineTo(-hs * 0.2, hs * 0.1);
+          ctx.lineTo(hs * 0.2, -hs * 0.1);
+          ctx.lineTo(hs, hs * 0.4);
+          ctx.stroke();
+          break;
+        case 'web':
+          // Web thread cross
+          ctx.strokeStyle = col;
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(-hs, -hs); ctx.lineTo(hs, hs);
+          ctx.moveTo(hs, -hs); ctx.lineTo(-hs, hs);
+          ctx.moveTo(0, -hs); ctx.lineTo(0, hs);
+          ctx.stroke();
+          break;
+      }
+
       ctx.shadowBlur = 0;
       ctx.restore();
     }
 
-    // Continuous glow line connecting trail positions for wave-like feel
+    // Continuous glow line connecting trail positions
     if (player.trail.length > 1) {
       ctx.save();
-      ctx.globalAlpha = 0.15 * speedFactor;
-      ctx.strokeStyle = `hsl(${(120 + (hue - 200) * 0.15) % 360}, 100%, 50%)`;
-      ctx.lineWidth = 2 * speedFactor;
-      ctx.shadowColor = ctx.strokeStyle;
+      ctx.globalAlpha = 0.18 * speedFactor;
+      const lineCol = `hsl(${style.hue}, ${style.sat}%, ${style.light}%)`;
+      ctx.strokeStyle = lineCol;
+      ctx.lineWidth = (style.shape === 'lightning' ? 3 : 2) * speedFactor;
+      ctx.shadowColor = lineCol;
       ctx.shadowBlur = 8 * speedFactor;
       ctx.beginPath();
       for (let i = 0; i < player.trail.length; i++) {
@@ -549,7 +737,6 @@ export class Renderer {
         if (i === 0) ctx.moveTo(px, py);
         else ctx.lineTo(px, py);
       }
-      // Connect to current player position
       ctx.lineTo(player.x - camX + S / 2, groundY - player.y - S / 2);
       ctx.stroke();
       ctx.shadowBlur = 0;
@@ -569,6 +756,9 @@ export class Renderer {
     ctx.translate(sx + S / 2, sy + S / 2);
     if (player.gravityFlipped) ctx.scale(1, -1);
     ctx.rotate(player.rotation * Math.PI / 180);
+    // Squash/stretch: scale X wider when squashed, Y taller when stretched
+    const sq = player.squash;
+    ctx.scale(1 / sq, sq);
 
     switch (player.mode) {
       case VehicleMode.Cube:
@@ -1100,6 +1290,13 @@ export class Renderer {
     this.drawParticles(camX, groundY, particles);
 
     ctx.restore();
+
+    // Mode transition flash overlay
+    if (this.modeFlash > 0.01) {
+      ctx.fillStyle = `rgba(${this.modeFlashR}, ${this.modeFlashG}, ${this.modeFlashB}, ${this.modeFlash * 0.35})`;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      this.modeFlash *= 0.88; // fast decay
+    }
 
     this.drawHUD(progress, attempts);
   }

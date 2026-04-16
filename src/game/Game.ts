@@ -12,6 +12,16 @@ const U = CONFIG.UNIT_SIZE;
 const S = CONFIG.PLAYER_SIZE;
 const INSET = CONFIG.SPIKE_INSET;
 
+/** RGB colours for mode transition particle bursts */
+const MODE_TRANSITION_COLORS: Record<VehicleMode, [number, number, number]> = {
+  [VehicleMode.Cube]: [0, 255, 0],
+  [VehicleMode.Ship]: [0, 200, 255],
+  [VehicleMode.Ball]: [255, 100, 0],
+  [VehicleMode.UFO]: [170, 0, 255],
+  [VehicleMode.Wave]: [0, 255, 136],
+  [VehicleMode.Spider]: [255, 0, 102],
+};
+
 export class Game {
   readonly canvas: HTMLCanvasElement;
   readonly ctx: CanvasRenderingContext2D;
@@ -399,6 +409,7 @@ export class Game {
       const playerCenter = player.x + S / 2;
       const prevCenter = playerCenter - CONFIG.SCROLL_SPEED;
       if (prevCenter < portal.x && playerCenter >= portal.x) {
+        const prevMode = player.mode;
         player.mode = portal.mode;
         if (portal.mode === VehicleMode.Cube) {
           player.gravityFlipped = false;
@@ -406,6 +417,13 @@ export class Game {
         if (portal.mode === VehicleMode.Ship || portal.mode === VehicleMode.UFO) {
           player.vy = 2;
           player.onGround = false;
+        }
+        // Mode transition effects
+        if (prevMode !== portal.mode) {
+          const colors = MODE_TRANSITION_COLORS[portal.mode];
+          this.particles.emitModeTransition(player.x, player.y, colors[0], colors[1], colors[2]);
+          this.renderer.triggerModeFlash(colors[0], colors[1], colors[2]);
+          this.camera.shake(6);
         }
       }
     }
@@ -425,6 +443,12 @@ export class Game {
     // --- Camera ---
     this.camera.follow(player.x);
     this.camera.update();
+
+    // --- Squash/stretch + landing particles ---
+    player.updateSquash();
+    if (player.justLanded) {
+      this.particles.emitLanding(player.x, player.y);
+    }
 
     // --- Player visual rotation ---
     player.updateRotation();

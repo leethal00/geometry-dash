@@ -185,6 +185,46 @@ export class ParticleSystem {
     }
   }
 
+  /** Landing dust — small particles at feet on ground contact */
+  emitLanding(worldX: number, worldY: number): void {
+    const cx = worldX + CONFIG.PLAYER_SIZE / 2;
+    for (let i = 0; i < 8; i++) {
+      const angle = -Math.PI / 2 + (Math.random() - 0.5) * 2.4;
+      const speed = 2 + Math.random() * 4;
+      this.particles.push(this.createParticle(
+        cx + (Math.random() - 0.5) * CONFIG.PLAYER_SIZE * 0.8,
+        worldY + 2,
+        Math.cos(angle) * speed,
+        Math.abs(Math.sin(angle)) * speed * 0.5 + 1,
+        1.5 + Math.random() * 2.5,
+        12 + Math.random() * 10,
+        180, 200, 220,
+        2, // circles
+      ));
+    }
+  }
+
+  /** Mode transition burst — ring of mode-colored particles */
+  emitModeTransition(worldX: number, worldY: number, r: number, g: number, b: number): void {
+    const cx = worldX + CONFIG.PLAYER_SIZE / 2;
+    const cy = worldY + CONFIG.PLAYER_SIZE / 2;
+    for (let i = 0; i < 24; i++) {
+      const angle = (i / 24) * Math.PI * 2;
+      const speed = 4 + Math.random() * 6;
+      this.particles.push(this.createParticle(
+        cx, cy,
+        Math.cos(angle) * speed,
+        Math.sin(angle) * speed,
+        3 + Math.random() * 5,
+        20 + Math.random() * 15,
+        r + Math.floor(Math.random() * 40),
+        g + Math.floor(Math.random() * 40),
+        b + Math.floor(Math.random() * 40),
+        i % 4,
+      ));
+    }
+  }
+
   /** Portal swirl — persistent swirling particles around portal frame */
   emitPortalSwirl(worldX: number, groundY: number): void {
     const portalH = CONFIG.UNIT_SIZE * 6;

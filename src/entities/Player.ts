@@ -26,6 +26,12 @@ export class Player {
   trail: TrailPoint[] = [];
   /** Current vehicle mode */
   mode: VehicleMode = VehicleMode.Cube;
+  /** Squash/stretch factor (1 = normal, <1 = squashed, >1 = stretched) */
+  squash = 1;
+  /** Whether player just landed this tick (for particles) */
+  justLanded = false;
+  /** Previous onGround state for landing detection */
+  private wasOnGround = true;
 
   reset(): void {
     this.x = 80; // start 2 blocks in
@@ -38,6 +44,9 @@ export class Player {
     this.gravityFlipped = false;
     this.trail = [];
     this.mode = VehicleMode.Cube;
+    this.squash = 1;
+    this.justLanded = false;
+    this.wasOnGround = true;
   }
 
   /** Cube mode: single tap jump from ground */
@@ -46,6 +55,7 @@ export class Player {
     this.vy = this.gravityFlipped ? -CONFIG.JUMP_VELOCITY : CONFIG.JUMP_VELOCITY;
     this.onGround = false;
     this.targetRotation += this.gravityFlipped ? -90 : 90;
+    this.squash = 1.35; // stretch on jump
   }
 
   /** Ball mode: toggle gravity direction on tap */
@@ -81,6 +91,22 @@ export class Player {
     this.vy = this.gravityFlipped ? -CONFIG.ORB_JUMP_VELOCITY : CONFIG.ORB_JUMP_VELOCITY;
     this.onGround = false;
     this.targetRotation += this.gravityFlipped ? -90 : 90;
+  }
+
+  /** Update squash/stretch visual and detect landings */
+  updateSquash(): void {
+    this.justLanded = false;
+    if (this.onGround && !this.wasOnGround) {
+      // Just landed — squash
+      this.squash = 0.6;
+      this.justLanded = true;
+    } else if (!this.onGround && this.wasOnGround && Math.abs(this.vy) > 5) {
+      // Just jumped/launched — stretch
+      this.squash = 1.35;
+    }
+    // Lerp back to 1.0
+    this.squash += (1 - this.squash) * 0.18;
+    this.wasOnGround = this.onGround;
   }
 
   /** Record current position for trail rendering */
