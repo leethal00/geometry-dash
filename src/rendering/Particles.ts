@@ -1,4 +1,4 @@
-import { CONFIG } from '../game/Config.js';
+import { CONFIG, VehicleMode } from '../game/Config.js';
 
 export interface Particle {
   x: number;
@@ -42,8 +42,32 @@ export class ParticleSystem {
     };
   }
 
-  /** Death shatter — large rotating pieces flying in all directions */
-  emitDeath(worldX: number, worldY: number): void {
+  /** Death shatter — delegates to per-mode death effect */
+  emitDeath(worldX: number, worldY: number, mode: VehicleMode = VehicleMode.Cube): void {
+    switch (mode) {
+      case VehicleMode.Cube:
+        this.emitDeathCube(worldX, worldY);
+        break;
+      case VehicleMode.Ship:
+        this.emitDeathShip(worldX, worldY);
+        break;
+      case VehicleMode.Ball:
+        this.emitDeathBall(worldX, worldY);
+        break;
+      case VehicleMode.UFO:
+        this.emitDeathUFO(worldX, worldY);
+        break;
+      case VehicleMode.Wave:
+        this.emitDeathWave(worldX, worldY);
+        break;
+      case VehicleMode.Spider:
+        this.emitDeathSpider(worldX, worldY);
+        break;
+    }
+  }
+
+  /** Cube death: green shards shattering outward like breaking glass */
+  private emitDeathCube(worldX: number, worldY: number): void {
     const count = CONFIG.DEATH_PARTICLE_COUNT;
     const half = CONFIG.PLAYER_SIZE / 2;
     const cx = worldX + half;
@@ -53,51 +77,212 @@ export class ParticleSystem {
       const angle = (i / count) * Math.PI * 2 + Math.random() * 0.4;
       const speed = 5 + Math.random() * 12;
       const life = CONFIG.PARTICLE_LIFETIME * (0.5 + Math.random() * 0.5);
-      // Mix of green shades with some white/cyan sparks
       let r: number, g: number, b: number;
       const variant = i % 5;
       if (variant < 3) {
-        // Green shards (main)
-        r = 0;
-        g = 180 + Math.floor(Math.random() * 75);
-        b = Math.floor(Math.random() * 40);
+        r = 0; g = 180 + Math.floor(Math.random() * 75); b = Math.floor(Math.random() * 40);
       } else if (variant === 3) {
-        // White sparks
-        r = 200 + Math.floor(Math.random() * 55);
-        g = 220 + Math.floor(Math.random() * 35);
-        b = 200 + Math.floor(Math.random() * 55);
+        r = 200 + Math.floor(Math.random() * 55); g = 220 + Math.floor(Math.random() * 35); b = 200 + Math.floor(Math.random() * 55);
       } else {
-        // Cyan accent
-        r = 0;
-        g = 180 + Math.floor(Math.random() * 75);
-        b = 200 + Math.floor(Math.random() * 55);
+        r = 0; g = 180 + Math.floor(Math.random() * 75); b = 200 + Math.floor(Math.random() * 55);
       }
-
-      // Mix of shapes for visual variety
       const shape = i % 4;
-
       this.particles.push(this.createParticle(
-        cx + (Math.random() - 0.5) * 14,
-        cy + (Math.random() - 0.5) * 14,
-        Math.cos(angle) * speed,
-        Math.sin(angle) * speed + 5,
-        CONFIG.DEATH_PARTICLE_SIZE_MIN +
-          Math.random() * (CONFIG.DEATH_PARTICLE_SIZE_MAX - CONFIG.DEATH_PARTICLE_SIZE_MIN),
+        cx + (Math.random() - 0.5) * 14, cy + (Math.random() - 0.5) * 14,
+        Math.cos(angle) * speed, Math.sin(angle) * speed + 5,
+        CONFIG.DEATH_PARTICLE_SIZE_MIN + Math.random() * (CONFIG.DEATH_PARTICLE_SIZE_MAX - CONFIG.DEATH_PARTICLE_SIZE_MIN),
         life, r, g, b, shape,
       ));
     }
-
-    // Extra small spark burst for impact feel
+    // White spark burst
     for (let i = 0; i < 12; i++) {
       const angle = Math.random() * Math.PI * 2;
       const speed = 8 + Math.random() * 15;
+      this.particles.push(this.createParticle(cx, cy, Math.cos(angle) * speed, Math.sin(angle) * speed + 3, 1 + Math.random() * 3, 15 + Math.random() * 15, 255, 255, 255, 2));
+    }
+  }
+
+  /** Ship death: fiery explosion with orange/red expanding debris and engine sparks */
+  private emitDeathShip(worldX: number, worldY: number): void {
+    const half = CONFIG.PLAYER_SIZE / 2;
+    const cx = worldX + half;
+    const cy = worldY + half;
+
+    // Main explosion — outward fireballs
+    for (let i = 0; i < 35; i++) {
+      const angle = (i / 35) * Math.PI * 2 + Math.random() * 0.5;
+      const speed = 4 + Math.random() * 14;
+      const life = 30 + Math.random() * 30;
+      const variant = i % 3;
+      const r = variant === 0 ? 255 : variant === 1 ? 255 : 200;
+      const g = variant === 0 ? 100 + Math.floor(Math.random() * 80) : variant === 1 ? 50 : 120;
+      const b = variant === 0 ? 0 : variant === 1 ? 0 : 30;
       this.particles.push(this.createParticle(
-        cx, cy,
-        Math.cos(angle) * speed,
-        Math.sin(angle) * speed + 3,
-        1 + Math.random() * 3,
-        15 + Math.random() * 15,
-        255, 255, 255, 2, // tiny circles
+        cx + (Math.random() - 0.5) * 20, cy + (Math.random() - 0.5) * 10,
+        Math.cos(angle) * speed, Math.sin(angle) * speed + 2,
+        4 + Math.random() * 10, life, r, g, b, 2, // circles for fire
+      ));
+    }
+    // Engine trail sparks — shoot backward
+    for (let i = 0; i < 15; i++) {
+      const angle = Math.PI + (Math.random() - 0.5) * 1.2;
+      const speed = 6 + Math.random() * 10;
+      this.particles.push(this.createParticle(
+        cx - half, cy, Math.cos(angle) * speed, Math.sin(angle) * speed + 1,
+        2 + Math.random() * 4, 20 + Math.random() * 20, 255, 200, 50, 2,
+      ));
+    }
+    // Smoke puffs
+    for (let i = 0; i < 8; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 1 + Math.random() * 3;
+      this.particles.push(this.createParticle(
+        cx + (Math.random() - 0.5) * 30, cy + (Math.random() - 0.5) * 20,
+        Math.cos(angle) * speed, Math.sin(angle) * speed + 2,
+        8 + Math.random() * 12, 40 + Math.random() * 20, 80, 80, 80, 2,
+      ));
+    }
+  }
+
+  /** Ball death: radial ring burst — orange segments spinning outward */
+  private emitDeathBall(worldX: number, worldY: number): void {
+    const half = CONFIG.PLAYER_SIZE / 2;
+    const cx = worldX + half;
+    const cy = worldY + half;
+
+    // Ring segments spinning outward
+    for (let i = 0; i < 28; i++) {
+      const angle = (i / 28) * Math.PI * 2;
+      const speed = 6 + Math.random() * 10;
+      const life = 25 + Math.random() * 30;
+      this.particles.push(this.createParticle(
+        cx + Math.cos(angle) * 8, cy + Math.sin(angle) * 8,
+        Math.cos(angle) * speed, Math.sin(angle) * speed,
+        3 + Math.random() * 6, life,
+        255, 80 + Math.floor(Math.random() * 60), 0,
+        i % 2 === 0 ? 2 : 3, // circles and diamonds alternating
+      ));
+    }
+    // Inner hot core sparks
+    for (let i = 0; i < 16; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 10 + Math.random() * 12;
+      this.particles.push(this.createParticle(
+        cx, cy, Math.cos(angle) * speed, Math.sin(angle) * speed,
+        1.5 + Math.random() * 2.5, 15 + Math.random() * 10,
+        255, 220, 100, 2,
+      ));
+    }
+  }
+
+  /** UFO death: anti-gravity implosion then explosion — particles pull in then burst out */
+  private emitDeathUFO(worldX: number, worldY: number): void {
+    const half = CONFIG.PLAYER_SIZE / 2;
+    const cx = worldX + half;
+    const cy = worldY + half;
+
+    // Purple energy shards flying outward
+    for (let i = 0; i < 30; i++) {
+      const angle = (i / 30) * Math.PI * 2 + Math.random() * 0.3;
+      const speed = 3 + Math.random() * 10;
+      const life = 30 + Math.random() * 30;
+      const variant = i % 3;
+      const r = variant === 0 ? 170 : variant === 1 ? 200 : 140;
+      const g = variant === 0 ? 0 : variant === 1 ? 100 : 0;
+      const b = variant === 0 ? 255 : variant === 1 ? 255 : 200;
+      this.particles.push(this.createParticle(
+        cx + (Math.random() - 0.5) * 16, cy + (Math.random() - 0.5) * 16,
+        Math.cos(angle) * speed, Math.sin(angle) * speed + 3,
+        3 + Math.random() * 7, life, r, g, b, 3, // diamonds
+      ));
+    }
+    // Bottom beam discharge — particles shoot downward
+    for (let i = 0; i < 10; i++) {
+      const spread = (Math.random() - 0.5) * 2;
+      this.particles.push(this.createParticle(
+        cx + spread * 15, cy + half * 0.5,
+        spread * 2, -(4 + Math.random() * 8),
+        2 + Math.random() * 3, 18 + Math.random() * 12,
+        200, 100, 255, 2,
+      ));
+    }
+  }
+
+  /** Wave death: electric discharge — lightning bolts radiating outward */
+  private emitDeathWave(worldX: number, worldY: number): void {
+    const half = CONFIG.PLAYER_SIZE / 2;
+    const cx = worldX + half;
+    const cy = worldY + half;
+
+    // Lightning segments radiating out in 8 directions
+    for (let dir = 0; dir < 8; dir++) {
+      const baseAngle = (dir / 8) * Math.PI * 2;
+      for (let seg = 0; seg < 4; seg++) {
+        const dist = (seg + 1) * 12;
+        const jitter = (Math.random() - 0.5) * 0.6;
+        const angle = baseAngle + jitter;
+        const px = cx + Math.cos(angle) * dist;
+        const py = cy + Math.sin(angle) * dist;
+        const speed = 2 + seg * 2 + Math.random() * 3;
+        this.particles.push(this.createParticle(
+          px, py,
+          Math.cos(baseAngle) * speed, Math.sin(baseAngle) * speed + 2,
+          2 + Math.random() * 3, 18 + Math.random() * 15,
+          0, 255, 100 + Math.floor(Math.random() * 56), 0, // green squares — sharp
+        ));
+      }
+    }
+    // Central flash
+    for (let i = 0; i < 12; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 8 + Math.random() * 12;
+      this.particles.push(this.createParticle(
+        cx, cy, Math.cos(angle) * speed, Math.sin(angle) * speed,
+        1 + Math.random() * 2, 10 + Math.random() * 10,
+        200, 255, 200, 2,
+      ));
+    }
+  }
+
+  /** Spider death: web shatter — threads collapse and scatter with red tint */
+  private emitDeathSpider(worldX: number, worldY: number): void {
+    const half = CONFIG.PLAYER_SIZE / 2;
+    const cx = worldX + half;
+    const cy = worldY + half;
+
+    // Web strand fragments — long thin particles
+    for (let i = 0; i < 24; i++) {
+      const angle = (i / 24) * Math.PI * 2 + Math.random() * 0.4;
+      const speed = 5 + Math.random() * 10;
+      const life = 25 + Math.random() * 25;
+      this.particles.push(this.createParticle(
+        cx + (Math.random() - 0.5) * 12, cy + (Math.random() - 0.5) * 12,
+        Math.cos(angle) * speed, Math.sin(angle) * speed + 4,
+        2 + Math.random() * 5, life,
+        255, Math.floor(Math.random() * 50), 60 + Math.floor(Math.random() * 40),
+        1, // triangles — sharp web fragments
+      ));
+    }
+    // Leg segments — fly in 4 diagonal directions
+    for (let leg = 0; leg < 4; leg++) {
+      const angle = (leg / 4) * Math.PI + Math.PI * 0.25;
+      const speed = 7 + Math.random() * 5;
+      this.particles.push(this.createParticle(
+        cx + Math.cos(angle) * 10, cy + Math.sin(angle) * 10,
+        Math.cos(angle) * speed, Math.sin(angle) * speed + 2,
+        6 + Math.random() * 4, 30 + Math.random() * 15,
+        255, 0, 100, 0, // leg-coloured squares
+      ));
+    }
+    // Red mist
+    for (let i = 0; i < 8; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 1 + Math.random() * 3;
+      this.particles.push(this.createParticle(
+        cx + (Math.random() - 0.5) * 20, cy + (Math.random() - 0.5) * 20,
+        Math.cos(angle) * speed, Math.sin(angle) * speed + 1,
+        6 + Math.random() * 8, 35 + Math.random() * 20,
+        180, 0, 40, 2,
       ));
     }
   }
@@ -221,6 +406,28 @@ export class ParticleSystem {
         g + Math.floor(Math.random() * 40),
         b + Math.floor(Math.random() * 40),
         i % 4,
+      ));
+    }
+  }
+
+  /** Near-miss effect — glowing streak when player barely clears an obstacle */
+  emitNearMiss(worldX: number, worldY: number): void {
+    const cx = worldX + CONFIG.PLAYER_SIZE / 2;
+    const cy = worldY + CONFIG.PLAYER_SIZE / 2;
+
+    // Bright white/gold streak particles
+    for (let i = 0; i < 10; i++) {
+      const angle = -Math.PI / 2 + (Math.random() - 0.5) * 1.6;
+      const speed = 3 + Math.random() * 5;
+      this.particles.push(this.createParticle(
+        cx + (Math.random() - 0.5) * CONFIG.PLAYER_SIZE,
+        cy + (Math.random() - 0.5) * 8,
+        Math.cos(angle) * speed * 0.3 - 2,  // trail backward
+        Math.sin(angle) * speed,
+        1.5 + Math.random() * 2.5,
+        12 + Math.random() * 10,
+        255, 230 + Math.floor(Math.random() * 25), 100 + Math.floor(Math.random() * 80),
+        2, // circles
       ));
     }
   }

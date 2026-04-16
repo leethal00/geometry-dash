@@ -147,6 +147,7 @@ export class Game {
     this.progress = 0;
     this.attempts++;
     this.usedOrbs.clear();
+    this.nearMissCooldown = 0;
     this.audio.start();
     this.stateMachine.transition(GameState.Playing);
   }
@@ -428,6 +429,9 @@ export class Game {
       }
     }
 
+    // --- Near-miss detection (close calls with spikes/blocks) ---
+    this.checkNearMiss();
+
     // --- Fall death ---
     if (player.y < CONFIG.FALL_DEATH_Y) {
       this.die();
@@ -457,6 +461,78 @@ export class Game {
     this.progress = player.x / level.lengthPx;
     if (this.progress >= 1) {
       this.complete();
+    }
+  }
+
+  // ================================================================
+  // Near-miss detection — particles when barely clearing obstacles
+  // ================================================================
+
+  /** Threshold in pixels for near-miss (gap between player and obstacle edge) */
+  private static readonly NEAR_MISS_THRESHOLD = 8;
+  /** Cooldown to prevent spam (ticks) */
+  private nearMissCooldown = 0;
+
+  private checkNearMiss(): void {
+    if (this.nearMissCooldown > 0) {
+      this.nearMissCooldown--;
+      return;
+    }
+
+    const player = this.player;
+    const level = this.level;
+    const threshold = Game.NEAR_MISS_THRESHOLD;
+
+    // Check spikes
+    for (const spike of level.spikes) {
+      if (spike.x > player.x + S + 80) break;
+      if (spike.x + U < player.x - 20) continue;
+
+      const hx = spike.x + INSET;
+      const hy = spike.y + INSET;
+      const hw = U - INSET * 2;
+      const hh = U - INSET * 2;
+
+      // Horizontal overlap check
+      if (player.x < hx + hw && player.x + S > hx) {
+        // Check vertical near-miss (above or below spike)
+        const gapBelow = player.y - (hy + hh);
+        const gapAbove = hy - (player.y + S);
+
+        if ((gapBelow > 0 && gapBelow < threshold) || (gapAbove > 0 && gapAbove < threshold)) {
+          this.particles.emitNearMiss(player.x, player.y);
+          this.nearMissCooldown = 15;
+          return;
+        }
+      }
+
+      // Vertical overlap check
+      if (player.y < hy + hh && player.y + S > hy) {
+        const gapLeft = hx - (player.x + S);
+        const gapRight = player.x - (hx + hw);
+
+        if ((gapLeft > 0 && gapLeft < threshold) || (gapRight > 0 && gapRight < threshold)) {
+          this.particles.emitNearMiss(player.x, player.y);
+          this.nearMissCooldown = 15;
+          return;
+        }
+      }
+    }
+
+    // Check blocks (side near-miss only — landing is normal gameplay)
+    for (const block of level.blocks) {
+      if (block.x > player.x + S + 80) break;
+      if (block.x + U < player.x - 20) continue;
+
+      // Side near-miss: player passes right beside a block
+      if (player.y < block.y + U && player.y + S > block.y) {
+        const gapRight = player.x - (block.x + U);
+        if (gapRight > 0 && gapRight < threshold) {
+          this.particles.emitNearMiss(player.x, player.y);
+          this.nearMissCooldown = 15;
+          return;
+        }
+      }
     }
   }
 
@@ -499,7 +575,7 @@ export class Game {
     this.player.alive = false;
     this.deathTimer = CONFIG.DEATH_PAUSE_TICKS;
     this.camera.shake(16);
-    this.particles.emitDeath(this.player.x, this.player.y);
+    this.particles.emitDeath(this.player.x, this.player.y, this.player.mode);
     this.audio.stop();
     this.stateMachine.transition(GameState.Dead);
   }
